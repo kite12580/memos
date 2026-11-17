@@ -207,9 +207,9 @@ func (d *DB) ListMemos(ctx context.Context, find *store.FindMemo) ([]*store.Memo
 		"WHERE " + strings.Join(where, " AND ") + " " +
 		"ORDER BY " + strings.Join(orderBy, ", ")
 	if find.Limit != nil {
-		pageQuery = fmt.Sprintf("%s LIMIT %d", pageQuery, *find.Limit)
+		pageQuery, args = pageQuery+" LIMIT ?", append(args, *find.Limit)
 		if find.Offset != nil {
-			pageQuery = fmt.Sprintf("%s OFFSET %d", pageQuery, *find.Offset)
+			pageQuery, args = pageQuery+" OFFSET ?", append(args, *find.Offset)
 		}
 	}
 	pageOrderBy := make([]string, 0, len(orderBy))
@@ -242,7 +242,7 @@ func (d *DB) ListMemos(ctx context.Context, find *store.FindMemo) ([]*store.Memo
 		"JOIN `memo` ON `memo`.`id` = `page`.`id` " +
 		"ORDER BY " + strings.Join(pageOrderBy, ", ")
 
-	rows, err := d.db.QueryContext(ctx, query, args...)
+	rows, err := d.stmts.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

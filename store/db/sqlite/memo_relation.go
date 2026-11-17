@@ -112,7 +112,7 @@ func (d *DB) ListMemoRelations(ctx context.Context, find *store.FindMemoRelation
 		}
 	}
 
-	rows, err := d.db.QueryContext(ctx, query, args...)
+	rows, err := d.stmts.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

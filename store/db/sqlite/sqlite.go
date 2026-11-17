@@ -16,6 +16,7 @@ import (
 
 type DB struct {
 	db      *sql.DB
+	stmts   *stmtCache
 	profile *profile.Profile
 }
 
@@ -70,7 +71,7 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 	sqliteDB.SetMaxIdleConns(4)
 	sqliteDB.SetConnMaxIdleTime(5 * time.Minute)
 
-	driver := DB{db: sqliteDB, profile: profile}
+	driver := DB{db: sqliteDB, stmts: newStmtCache(sqliteDB), profile: profile}
 
 	return &driver, nil
 }
@@ -80,6 +81,7 @@ func (d *DB) GetDB() *sql.DB {
 }
 
 func (d *DB) Close() error {
+	d.stmts.close()
 	return d.db.Close()
 }
 

@@ -151,7 +151,7 @@ func (d *DB) ListAttachments(ctx context.Context, find *store.FindAttachment) ([
 		}
 	}
 
-	rows, err := d.db.QueryContext(ctx, query, args...)
+	rows, err := d.stmts.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

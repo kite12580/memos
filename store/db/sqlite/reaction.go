@@ -78,7 +78,7 @@ func (d *DB) ListReactions(ctx context.Context, find *store.FindReaction) ([]*st
 		where = append(where, "memo_id IN ("+strings.Join(placeholders, ",")+")")
 	}
 
-	rows, err := d.db.QueryContext(ctx, `
+	rows, err := d.stmts.query(ctx, `
 		SELECT
 			id,
 			created_ts,

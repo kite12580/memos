@@ -88,6 +88,13 @@ the pragma if upstream edits the DSN.
 expression is cached; the condition is rebuilt each time because it folds
 `now`. If upstream changes `Compile`, keep the type check behind the cache.
 
+**SQLite statement cache** — `store/db/sqlite/stmt_cache.go`,
+`store/db/sqlite/stmt_cache_test.go`, the `stmts` field and `Close` in
+`store/db/sqlite/sqlite.go`, and `d.stmts.query` in `ListMemos`,
+`ListReactions`, `ListAttachments` and `ListMemoRelations`. `ListMemos` binds
+`LIMIT` and `OFFSET` as arguments so every page shares one statement. If
+upstream rewrites one of those queries, keep it on `d.stmts.query`.
+
 **User stats read in one query** — `server/api/user_service_stats.go`.
 `GetUserStats` and `ListUserStats` call `ListMemos` once instead of paging by
 1,000 with `OFFSET`. Conflicts here are usually upstream edits inside the
