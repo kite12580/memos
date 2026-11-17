@@ -198,6 +198,25 @@ func (d *DB) ListMemos(ctx context.Context, find *store.FindMemo) ([]*store.Memo
 	}
 	// Add id as final tie-breaker
 	orderBy = append(orderBy, "`id` DESC")
+
+	// The page is chosen over the sort keys alone, so SQLite sorts narrow rows
+	// and evaluates content, payload and parent_uid only for the rows returned.
+	pageQuery := "SELECT `memo`.`id` AS `id`, `memo`.`pinned` AS `pinned`, `memo`.`created_ts` AS `created_ts`, `memo`.`updated_ts` AS `updated_ts` FROM `memo` " +
+		"LEFT JOIN `user` AS `memo_creator` ON `memo`.`creator_id` = `memo_creator`.`id` " +
+		"LEFT JOIN `space` AS `memo_space` ON `memo`.`space_id` = `memo_space`.`id` " +
+		"WHERE " + strings.Join(where, " AND ") + " " +
+		"ORDER BY " + strings.Join(orderBy, ", ")
+	if find.Limit != nil {
+		pageQuery = fmt.Sprintf("%s LIMIT %d", pageQuery, *find.Limit)
+		if find.Offset != nil {
+			pageQuery = fmt.Sprintf("%s OFFSET %d", pageQuery, *find.Offset)
+		}
+	}
+	pageOrderBy := make([]string, 0, len(orderBy))
+	for _, term := range orderBy {
+		pageOrderBy = append(pageOrderBy, "`page`."+term)
+	}
+
 	fields := []string{
 		"`memo`.`id` AS `id`",
 		"`memo`.`uid` AS `uid`",
@@ -219,17 +238,9 @@ func (d *DB) ListMemos(ctx context.Context, find *store.FindMemo) ([]*store.Memo
 		fields = append(fields, "`memo`.`content` AS `content`")
 	}
 
-	query := "SELECT " + strings.Join(fields, ", ") + " FROM `memo` " +
-		"LEFT JOIN `user` AS `memo_creator` ON `memo`.`creator_id` = `memo_creator`.`id` " +
-		"LEFT JOIN `space` AS `memo_space` ON `memo`.`space_id` = `memo_space`.`id` " +
-		"WHERE " + strings.Join(where, " AND ") + " " +
-		"ORDER BY " + strings.Join(orderBy, ", ")
-	if find.Limit != nil {
-		query = fmt.Sprintf("%s LIMIT %d", query, *find.Limit)
-		if find.Offset != nil {
-			query = fmt.Sprintf("%s OFFSET %d", query, *find.Offset)
-		}
-	}
+	query := "SELECT " + strings.Join(fields, ", ") + " FROM (" + pageQuery + ") AS `page` " +
+		"JOIN `memo` ON `memo`.`id` = `page`.`id` " +
+		"ORDER BY " + strings.Join(pageOrderBy, ", ")
 
 	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
