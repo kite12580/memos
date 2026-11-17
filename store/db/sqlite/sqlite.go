@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -62,6 +63,9 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open db with dsn: %s", profile.DSN)
 	}
+
+	sqliteDB.SetMaxIdleConns(4)
+	sqliteDB.SetConnMaxIdleTime(5 * time.Minute)
 
 	driver := DB{db: sqliteDB, profile: profile}
 

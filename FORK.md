@@ -61,6 +61,9 @@ content, so a changed memo misses on its own. If upstream changes the snippet
 length or `GenerateSnippet`, nothing else needs to change; if it moves
 `getMemoContentSnippet`, carry the lookup along.
 
+**SQLite idle connections** — `store/db/sqlite/sqlite.go` (`SetMaxIdleConns(4)`,
+`SetConnMaxIdleTime`).
+
 **User stats read in one query** — `server/api/user_service_stats.go`.
 `GetUserStats` and `ListUserStats` call `ListMemos` once instead of paging by
 1,000 with `OFFSET`. Conflicts here are usually upstream edits inside the
