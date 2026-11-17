@@ -85,6 +85,12 @@ must keep applying it, because fork uploads are stored unrotated.
 `web/tests/managed-attachment.test.ts`. Clicking an inline image opens the
 attachment's preview with the original.
 
+**Settings sections loaded on demand** — `web/src/components/Settings/settingSections.ts`
+(`component` is a lazy import), `web/src/pages/Setting.tsx` (`Suspense`, section
+switch in `startTransition`). The sidebar imports the section list for its labels,
+so eager section imports would put every section in the entry chunk. A section
+added by upstream must use `lazyWithReload` too.
+
 ## CI
 
 **Fork image** — `.github/workflows/fork-image.yml`. Builds the frontend and

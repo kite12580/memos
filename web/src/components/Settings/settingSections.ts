@@ -19,24 +19,8 @@ import {
   WebhookIcon,
 } from "lucide-react";
 import { type ComponentType } from "react";
-import AccessTokenSection from "@/components/Settings/AccessTokenSection";
-import AISection from "@/components/Settings/AISection";
-import ConfigurationSection from "@/components/Settings/ConfigurationSection";
-import EditorSection from "@/components/Settings/EditorSection";
-import InstanceSection from "@/components/Settings/InstanceSection";
-import MemberSection from "@/components/Settings/MemberSection";
-import MemoExportSection from "@/components/Settings/MemoExportSection";
-import MyAccountSection from "@/components/Settings/MyAccountSection";
-import NotificationSection from "@/components/Settings/NotificationSection";
-import PreferencesSection from "@/components/Settings/PreferencesSection";
-import ResourceStatsSection from "@/components/Settings/ResourceStatsSection";
-import SpacesSection from "@/components/Settings/SpacesSection";
-import SSOSection from "@/components/Settings/SSOSection";
-import StorageSection from "@/components/Settings/StorageSection";
-import TagsSection from "@/components/Settings/TagsSection";
-import UsageLimitsSection from "@/components/Settings/UsageLimitsSection";
-import WebhookSection from "@/components/Settings/WebhookSection";
 import { InstanceSetting_Key } from "@/types/proto/api/instance_service_pb";
+import { lazyWithReload } from "@/utils/lazy";
 
 export type SettingSectionKey =
   | "my-account"
@@ -74,77 +58,77 @@ export const SETTINGS_SECTIONS: SettingSectionDefinition[] = [
     scope: "basic",
     labelKey: "setting.my-account.label",
     icon: UserIcon,
-    component: MyAccountSection,
+    component: lazyWithReload(() => import("@/components/Settings/MyAccountSection")),
   },
   {
     key: "spaces",
     scope: "basic",
     labelKey: "setting.spaces.label",
     icon: AstroidIcon,
-    component: SpacesSection,
+    component: lazyWithReload(() => import("@/components/Settings/SpacesSection")),
   },
   {
     key: "access-token",
     scope: "basic",
     labelKey: "setting.access-token.label",
     icon: KeyRoundIcon,
-    component: AccessTokenSection,
+    component: lazyWithReload(() => import("@/components/Settings/AccessTokenSection")),
   },
   {
     key: "preference",
     scope: "basic",
     labelKey: "setting.preference.label",
     icon: CogIcon,
-    component: PreferencesSection,
+    component: lazyWithReload(() => import("@/components/Settings/PreferencesSection")),
   },
   {
     key: "editor",
     scope: "basic",
     labelKey: "setting.editor.label",
     icon: SquarePenIcon,
-    component: EditorSection,
+    component: lazyWithReload(() => import("@/components/Settings/EditorSection")),
   },
   {
     key: "webhook",
     scope: "basic",
     labelKey: "setting.webhook.label",
     icon: WebhookIcon,
-    component: WebhookSection,
+    component: lazyWithReload(() => import("@/components/Settings/WebhookSection")),
   },
   {
     key: "member",
     scope: "admin",
     labelKey: "setting.member.label",
     icon: UsersIcon,
-    component: MemberSection,
+    component: lazyWithReload(() => import("@/components/Settings/MemberSection")),
   },
   {
     key: "system",
     scope: "admin",
     labelKey: "setting.system.label",
     icon: Settings2Icon,
-    component: InstanceSection,
+    component: lazyWithReload(() => import("@/components/Settings/InstanceSection")),
   },
   {
     key: "tags",
     scope: "basic",
     labelKey: "setting.tags.label",
     icon: TagsIcon,
-    component: TagsSection,
+    component: lazyWithReload(() => import("@/components/Settings/TagsSection")),
   },
   {
     key: "memo-export",
     scope: "basic",
     labelKey: "setting.memo-export.label",
     icon: ArrowLeftRightIcon,
-    component: MemoExportSection,
+    component: lazyWithReload(() => import("@/components/Settings/MemoExportSection")),
   },
   {
     key: "storage",
     scope: "admin",
     labelKey: "setting.storage.label",
     icon: DatabaseIcon,
-    component: StorageSection,
+    component: lazyWithReload(() => import("@/components/Settings/StorageSection")),
     preloadSettingKeys: [InstanceSetting_Key.STORAGE],
   },
   {
@@ -152,14 +136,14 @@ export const SETTINGS_SECTIONS: SettingSectionDefinition[] = [
     scope: "admin",
     labelKey: "setting.usage-limits.label",
     icon: GaugeIcon,
-    component: UsageLimitsSection,
+    component: lazyWithReload(() => import("@/components/Settings/UsageLimitsSection")),
   },
   {
     key: "notification",
     scope: "admin",
     labelKey: "setting.notification.label",
     icon: MailIcon,
-    component: NotificationSection,
+    component: lazyWithReload(() => import("@/components/Settings/NotificationSection")),
     preloadSettingKeys: [InstanceSetting_Key.NOTIFICATION],
   },
   {
@@ -167,14 +151,14 @@ export const SETTINGS_SECTIONS: SettingSectionDefinition[] = [
     scope: "admin",
     labelKey: "setting.sso.label",
     icon: KeyIcon,
-    component: SSOSection,
+    component: lazyWithReload(() => import("@/components/Settings/SSOSection")),
   },
   {
     key: "ai",
     scope: "admin",
     labelKey: "setting.ai.label",
     icon: HeartHandshakeIcon,
-    component: AISection,
+    component: lazyWithReload(() => import("@/components/Settings/AISection")),
     preloadSettingKeys: [InstanceSetting_Key.AI],
   },
   {
@@ -182,14 +166,14 @@ export const SETTINGS_SECTIONS: SettingSectionDefinition[] = [
     scope: "admin",
     labelKey: "setting.resource-stats.label",
     icon: BarChart3Icon,
-    component: ResourceStatsSection,
+    component: lazyWithReload(() => import("@/components/Settings/ResourceStatsSection")),
   },
   {
     key: "configuration",
     scope: "admin",
     labelKey: "setting.configuration.label",
     icon: FileCogIcon,
-    component: ConfigurationSection,
+    component: lazyWithReload(() => import("@/components/Settings/ConfigurationSection")),
   },
 ];
 

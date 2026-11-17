@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   DEFAULT_SETTING_SECTION,
@@ -30,7 +30,7 @@ const Setting = () => {
   useEffect(() => {
     const hash = location.hash.slice(1);
     const nextSection = isSettingSectionKey(hash) && visibleSectionKeys.has(hash) ? hash : DEFAULT_SETTING_SECTION;
-    setSelectedSection(nextSection);
+    startTransition(() => setSelectedSection(nextSection));
   }, [location.hash, visibleSectionKeys]);
 
   // Jump back to the top when switching sections; skip the initial hash sync so
@@ -61,7 +61,9 @@ const Setting = () => {
     <section className="w-full min-h-full">
       <div className="mx-auto w-full max-w-4xl px-4 pb-12 pt-4 sm:px-6 md:pt-8">
         <div className="min-w-0">
-          <ActiveSection />
+          <Suspense fallback={null}>
+            <ActiveSection />
+          </Suspense>
         </div>
       </div>
     </section>
