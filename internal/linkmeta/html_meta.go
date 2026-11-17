@@ -20,6 +20,13 @@ import (
 // ErrInternalIP indicates that a link preview target resolves to a disallowed internal address.
 var ErrInternalIP = errors.New("internal IP addresses are not allowed")
 
+// ErrLocalHostname indicates that a link preview target names a host reserved for local networks.
+var ErrLocalHostname = errors.New("local hostnames are not allowed")
+
+// localHostnameSuffixes are special-use domains that never name a public host:
+// localhost (RFC 6761), local (mDNS, RFC 6762), home.arpa (RFC 8375) and internal.
+var localHostnameSuffixes = []string{"localhost", "local", "home.arpa", "internal"}
+
 const (
 	defaultLinkPreviewUserAgent = "MemosBot/1.0 (+https://usememos.com)"
 
@@ -147,8 +154,21 @@ func validateURL(urlStr string) error {
 	if ip := net.ParseIP(host); ip != nil && isInternalIP(ip) {
 		return errors.Wrap(ErrInternalIP, ip.String())
 	}
+	if isLocalHostname(host) {
+		return errors.Wrap(ErrLocalHostname, host)
+	}
 
 	return nil
+}
+
+func isLocalHostname(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	for _, suffix := range localHostnameSuffixes {
+		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // HTMLMeta contains metadata used to build a link preview.

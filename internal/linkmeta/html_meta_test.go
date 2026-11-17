@@ -536,6 +536,44 @@ func TestValidateURLReservedIPv4Ranges(t *testing.T) {
 	}
 }
 
+func TestValidateURLLocalHostnames(t *testing.T) {
+	originalLookupIPAddr := lookupIPAddr
+	t.Cleanup(func() { lookupIPAddr = originalLookupIPAddr })
+	lookupIPAddr = func(context.Context, string) ([]net.IPAddr, error) {
+		t.Fatal("local hostname should be rejected before resolving")
+		return nil, nil
+	}
+
+	tests := []struct {
+		host    string
+		blocked bool
+	}{
+		{"localhost", true},
+		{"app.localhost", true},
+		{"printer.local", true},
+		{"PRINTER.LOCAL.", true},
+		{"nas.home.arpa", true},
+		{"db.internal", true},
+		{"local", true},
+		{"example.com", false},
+		{"local.example.com", false},
+		{"mylocal", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.host, func(t *testing.T) {
+			err := validateURL("http://" + tc.host + "/page")
+			if tc.blocked {
+				require.ErrorIs(t, err, ErrLocalHostname)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
+	_, err := NewHTMLMetaFetcher().Get(context.Background(), "http://printer.local/")
+	require.ErrorIs(t, err, ErrLocalHostname)
+}
+
 func TestSecureDialContextRejectsResolvedInternalIP(t *testing.T) {
 	originalLookupIPAddr := lookupIPAddr
 	originalDialContext := dialContext
