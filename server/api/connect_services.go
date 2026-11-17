@@ -97,7 +97,7 @@ func (s *ConnectServiceHandler) SignOut(ctx context.Context, req *connect.Reques
 
 func (s *ConnectServiceHandler) RefreshToken(ctx context.Context, req *connect.Request[apipb.RefreshTokenRequest]) (*connect.Response[apipb.RefreshTokenResponse], error) {
 	return connectWithHeaderCarrier(ctx, func(ctx context.Context) (*apipb.RefreshTokenResponse, error) {
-		return s.APIService.RefreshToken(ctx, req.Msg)
+		return s.refreshTokenOrAutoLogin(ctx, req.Msg)
 	})
 }
 
