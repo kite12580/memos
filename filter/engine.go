@@ -8,7 +8,12 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/pkg/errors"
+	exprv1 "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
+
+	"github.com/usememos/memos/internal/recent"
 )
+
+const parsedFilterCacheSize = 256
 
 // Engine parses CEL filters into a dialect-agnostic condition tree.
 type Engine struct {
@@ -18,6 +23,9 @@ type Engine struct {
 	// Compile so a single filter sees a single instant, and is overridable in
 	// tests for deterministic folding.
 	nowFunc func() time.Time
+	// parsed caches checked expressions by filter text. Conditions are built
+	// from them on every Compile because they depend on nowFunc.
+	parsed *recent.Cache[string, *exprv1.Expr]
 }
 
 // NewEngine builds a new Engine for the provided schema.
@@ -36,6 +44,7 @@ func NewEngine(schema Schema) (*Engine, error) {
 		schema:  schema,
 		env:     env,
 		nowFunc: time.Now,
+		parsed:  recent.New[string, *exprv1.Expr](parsedFilterCacheSize),
 	}, nil
 }
 
@@ -56,16 +65,21 @@ func (e *Engine) Compile(_ context.Context, filter string) (*Program, error) {
 		return nil, errors.New("filter expression is empty")
 	}
 
-	ast, issues := e.env.Compile(filter)
-	if issues != nil && issues.Err() != nil {
-		return nil, errors.Wrap(issues.Err(), "failed to compile filter")
-	}
-	parsed, err := cel.AstToParsedExpr(ast)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to convert AST")
+	expr, ok := e.parsed.Get(filter)
+	if !ok {
+		ast, issues := e.env.Compile(filter)
+		if issues != nil && issues.Err() != nil {
+			return nil, errors.Wrap(issues.Err(), "failed to compile filter")
+		}
+		parsed, err := cel.AstToParsedExpr(ast)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to convert AST")
+		}
+		expr = parsed.GetExpr()
+		e.parsed.Put(filter, expr)
 	}
 
-	cond, err := buildCondition(parsed.GetExpr(), parseContext{schema: e.schema, now: e.nowFunc()})
+	cond, err := buildCondition(expr, parseContext{schema: e.schema, now: e.nowFunc()})
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,7 @@ nothing from `store`, `core`, `server`, `provider`, `markdown`, `filter`, or
 | `profile/` | process configuration parsed from flags and environment |
 | `random/` | UUIDs and random strings from a secure source |
 | `ratelimit/` | sliding-window rate limiter |
+| `recent/` | bounded two-generation cache of recently used entries |
 | `testutil/` | test fixtures and the fake S3 server (the one package allowed to import `proto/gen`) |
 | `version/` | CalVer build metadata from release overrides or the embedded Git commit |
 | `webhook/` | signed webhook delivery with SSRF protection |

@@ -893,3 +893,16 @@ func TestCompileRejectsOversizedExpression(t *testing.T) {
 	_, err = engine.Compile(context.Background(), `content.contains("a") || content.contains("b")`)
 	require.NoError(t, err)
 }
+
+func BenchmarkCompileRepeatedFilter(b *testing.B) {
+	engine, err := NewEngine(NewSchema())
+	require.NoError(b, err)
+	ctx := context.Background()
+	filter := `creator_id == 1 && visibility in ["PUBLIC", "PROTECTED"] && tag in ["work"]`
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := engine.CompileToStatement(ctx, filter, RenderOptions{Dialect: DialectSQLite}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

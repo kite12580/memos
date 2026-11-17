@@ -30,6 +30,18 @@ func TestCompileNowVariableFoldsToInjectedClock(t *testing.T) {
 	require.Equal(t, []any{int64(1750000000)}, stmt.Args)
 }
 
+func TestCompileRepeatedFilterFoldsCurrentClock(t *testing.T) {
+	t.Parallel()
+
+	engine := memoEngineAt(t, 1750000000)
+	for _, epoch := range []int64{1750000000, 1760000000} {
+		engine.nowFunc = fixedClock(epoch)
+		stmt, err := engine.CompileToStatement(context.Background(), `created_ts >= now - duration("1h")`, RenderOptions{Dialect: DialectSQLite})
+		require.NoError(t, err)
+		require.Equal(t, []any{epoch - 3600}, stmt.Args)
+	}
+}
+
 func TestCompileNowFunctionIsRemoved(t *testing.T) {
 	t.Parallel()
 

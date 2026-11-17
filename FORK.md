@@ -64,6 +64,13 @@ length or `GenerateSnippet`, nothing else needs to change; if it moves
 **SQLite idle connections** — `store/db/sqlite/sqlite.go` (`SetMaxIdleConns(4)`,
 `SetConnMaxIdleTime`).
 
+**Checked filter expressions cached** — `internal/recent/` (generic cache, tests),
+`internal/README.md`, `filter/engine.go` (`Engine.parsed`, used in `Compile`),
+`filter/time_test.go` (`TestCompileRepeatedFilterFoldsCurrentClock`),
+`filter/engine_test.go` (`BenchmarkCompileRepeatedFilter`). Only the CEL
+expression is cached; the condition is rebuilt each time because it folds
+`now`. If upstream changes `Compile`, keep the type check behind the cache.
+
 **User stats read in one query** — `server/api/user_service_stats.go`.
 `GetUserStats` and `ListUserStats` call `ListMemos` once instead of paging by
 1,000 with `OFFSET`. Conflicts here are usually upstream edits inside the
