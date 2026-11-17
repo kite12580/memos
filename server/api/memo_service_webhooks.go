@@ -130,11 +130,16 @@ func newMemoWebhookRequest(hook *storepb.WebhooksUserSetting_Webhook, activityTy
 }
 
 func (s *APIService) getMemoContentSnippet(content string) (string, error) {
+	key, snippet, ok := s.snippets.lookup(content)
+	if ok {
+		return snippet, nil
+	}
 	// Use goldmark service for snippet generation
 	snippet, err := s.MarkdownService.GenerateSnippet([]byte(content), 64)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to generate snippet")
 	}
+	s.snippets.put(key, snippet)
 	return snippet, nil
 }
 

@@ -94,6 +94,7 @@ type APIService struct {
 	attachmentUploads   attachmentUploads
 	attachmentReplaces  attachmentReplaceLocks
 	memoImports         memoImports
+	snippets            snippetCache
 }
 
 // NewAPIService creates an API v1 service with its shared dependencies.

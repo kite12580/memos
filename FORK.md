@@ -53,6 +53,14 @@ columns in `fields`, and the outer `ORDER BY` uses `page.` columns.
 memo IDs, such as related memos and comments in a list. Keep the `+` if
 upstream edits the predicate.
 
+**Memo snippets cached** — `server/api/memo_service_snippet.go` (`snippetCache`),
+`server/api/memo_service_snippet_test.go`, the `snippets` field in
+`server/api/api.go`, and `getMemoContentSnippet` in
+`server/api/memo_service_webhooks.go`. Snippets are cached by a hash of the
+content, so a changed memo misses on its own. If upstream changes the snippet
+length or `GenerateSnippet`, nothing else needs to change; if it moves
+`getMemoContentSnippet`, carry the lookup along.
+
 **User stats read in one query** — `server/api/user_service_stats.go`.
 `GetUserStats` and `ListUserStats` call `ListMemos` once instead of paging by
 1,000 with `OFFSET`. Conflicts here are usually upstream edits inside the
