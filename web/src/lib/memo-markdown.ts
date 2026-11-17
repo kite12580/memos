@@ -24,6 +24,7 @@ import { highlightLoadedCode, loadHighlighter } from "@/lib/code-highlight";
 import { colorToHex } from "@/lib/color";
 import { headingClasses, markdownStyles, mentionStyles, tagStyles } from "@/lib/markdownStyles";
 import { MEMO_MARKDOWN, MEMO_SYNTAX } from "@/lib/memo-ast";
+import { memoizeByText } from "@/lib/memoize-by-text";
 import { findTagMetadata } from "@/lib/tag";
 import { isAllowedLinkUrl } from "@/lib/url-policy";
 import { cn } from "@/lib/utils";
@@ -393,9 +394,10 @@ export const collectTags = (blocks: readonly Block[]): string[] => collectMatche
 /** Parses a memo the way the composer and the memo view read it. */
 export const parseMemoMarkdown = (markdown: string): Doc => parseMarkdown(markdown, { ...MEMO_MARKDOWN, syntax: MEMO_SYNTAX });
 
+const cachedMentionUsernames = memoizeByText((markdown) => collectMatches(parseMemoMarkdown(markdown).blocks, scanMentions), 1024);
+
 /**
  * Usernames a memo mentions, as the memo view highlights them: `@name` outside code,
  * links and other literal text. Only these need resolving to profile links.
  */
-export const extractMentionUsernames = (markdown: string): string[] =>
-  markdown.includes("@") ? collectMatches(parseMemoMarkdown(markdown).blocks, scanMentions) : [];
+export const extractMentionUsernames = (markdown: string): string[] => (markdown.includes("@") ? cachedMentionUsernames(markdown) : []);

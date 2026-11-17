@@ -1,5 +1,6 @@
 import { lineTable, sourceRange } from "@usememos/editor";
 import { parseMemoAst, visitWithSource } from "@/lib/memo-ast";
+import { memoizeByText } from "@/lib/memoize-by-text";
 import type { Attachment } from "@/types/proto/api/attachment_service_pb";
 import { getAttachmentMotionGroupId, getAttachmentThumbnailUrl, getAttachmentUrl, isImage } from "@/utils/attachment";
 
@@ -59,7 +60,7 @@ export const setManagedAttachmentInstanceUrl = (instanceUrl: string | undefined)
   if (nextOrigin === instanceOrigin && nextHost === instanceHost) return;
   instanceOrigin = nextOrigin;
   instanceHost = nextHost;
-  indexCache.clear();
+  cachedManagedImageIndex.clear();
 };
 
 const hasScheme = (raw: string): boolean => /^[a-z][a-z0-9+.-]*:/i.test(raw);
@@ -110,12 +111,11 @@ export const parseManagedAttachmentImageURL = (raw: string): string | undefined 
 const EMPTY_INDEX: ManagedImageIndex = { nodes: [], uids: new Set(), invalidReferences: [] };
 /**
  * Memo bodies are re-scanned on hot paths (every editor keystroke, every card
- * relayout, every render of a memo view), so the parse is cached by source
- * text. The cache is bounded and also keeps the derived `uids` set referentially
- * stable, which is what lets callers memoize on it.
+ * relayout of every loaded memo, every render of a memo view), so the parse is
+ * cached by source text. The cache also keeps the derived `uids` set
+ * referentially stable, which is what lets callers memoize on it.
  */
-const INDEX_CACHE_LIMIT = 128;
-const indexCache = new Map<string, ManagedImageIndex>();
+const cachedManagedImageIndex = memoizeByText((source) => buildManagedImageIndex(source), 1024);
 
 const buildManagedImageIndex = (source: string): ManagedImageIndex => {
   // Image references are resolved in the tree, to the first of duplicate definitions as
@@ -148,14 +148,7 @@ const buildManagedImageIndex = (source: string): ManagedImageIndex => {
 
 const managedImageIndex = (source: string): ManagedImageIndex => {
   if (!source.includes(MANAGED_ATTACHMENT_PATH_PREFIX)) return EMPTY_INDEX;
-
-  const cached = indexCache.get(source);
-  if (cached) return cached;
-
-  const index = buildManagedImageIndex(source);
-  if (indexCache.size >= INDEX_CACHE_LIMIT) indexCache.delete(indexCache.keys().next().value!);
-  indexCache.set(source, index);
-  return index;
+  return cachedManagedImageIndex(source);
 };
 
 export const extractManagedAttachmentUIDs = (source: string): ReadonlySet<string> => managedImageIndex(source).uids;

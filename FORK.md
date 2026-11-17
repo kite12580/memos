@@ -144,6 +144,12 @@ through the hook, not directly, or the catalog returns to the memo list chunk.
 `findMemoRecord`, apply it to the loop in `getMemoRecords`. A new memo query
 root must be added to `MEMO_QUERY_ROOTS`, as before.
 
+**Cached Markdown scans on the client** — `web/src/lib/memoize-by-text.ts`,
+`web/tests/memoize-by-text.test.ts`, `web/src/utils/managed-attachment.ts`
+(`cachedManagedImageIndex`, cleared when the instance URL changes),
+`web/src/lib/memo-markdown.ts` (`cachedMentionUsernames`). Callers share the
+cached arrays and sets, so they must not mutate them.
+
 ## CI
 
 **Fork image** — `.github/workflows/fork-image.yml`. Builds the frontend and
