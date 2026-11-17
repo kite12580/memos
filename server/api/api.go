@@ -99,10 +99,10 @@ type APIService struct {
 
 // NewAPIService creates an API v1 service with its shared dependencies.
 func NewAPIService(secret string, profile *profile.Profile, store *store.Store) *APIService {
-	markdownService := markdown.NewService(
+	markdownService := newExtractionCachingService(markdown.NewService(
 		markdown.WithTagExtension(),
 		markdown.WithMentionExtension(),
-	)
+	))
 	service := &APIService{
 		Secret:                   secret,
 		Profile:                  profile,

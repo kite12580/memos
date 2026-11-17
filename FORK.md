@@ -104,6 +104,11 @@ rules are unchanged; only their store reads are memoized for one request. If
 upstream adds a store read to `access.MemoReadStore`, add it to
 `memoReadCache`.
 
+**Markdown extraction cached per content** — `server/api/memo_service_markdown.go`
+(`extractionCachingService` wraps the service built in `NewAPIService` in
+`server/api/api.go`), `server/api/memo_service_markdown_test.go`. Results are
+copied in and out, so callers may keep modifying what they get.
+
 **User stats read in one query** — `server/api/user_service_stats.go`.
 `GetUserStats` and `ListUserStats` call `ListMemos` once instead of paging by
 1,000 with `OFFSET`. Conflicts here are usually upstream edits inside the
