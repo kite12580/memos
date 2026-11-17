@@ -138,6 +138,12 @@ through the hook, not directly, or the catalog returns to the memo list chunk.
 `web/tests/live-memo-refresh.test.tsx`. If upstream adds a key to
 `invalidateAllLiveQueries`, add it to `liveQueryKeys` too.
 
+**Indexed memo records** — `web/src/hooks/useMemoQueries.ts` (`changesMemoRecords`,
+`getMemoRecordIndex`, `getMemoRecords`, used by `findMemoRecord` and
+`useMemoRecord`). If upstream changes the freshest-copy rule in
+`findMemoRecord`, apply it to the loop in `getMemoRecords`. A new memo query
+root must be added to `MEMO_QUERY_ROOTS`, as before.
+
 ## CI
 
 **Fork image** — `.github/workflows/fork-image.yml`. Builds the frontend and

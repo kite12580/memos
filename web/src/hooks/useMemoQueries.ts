@@ -5,6 +5,8 @@ import {
   type InfiniteData,
   type Mutation,
   type MutationKey,
+  type QueryCache,
+  type QueryCacheNotifyEvent,
   type QueryClient,
   queryOptions,
   useInfiniteQuery,
@@ -171,6 +173,59 @@ export function findMemoInCollectionQueries(queryClient: QueryClient, name: stri
   return undefined;
 }
 
+/** Whether a cache event can change which memos the memo queries hold. */
+function changesMemoRecords(event: QueryCacheNotifyEvent): boolean {
+  if (!MEMO_QUERY_ROOTS.some((key) => key[0] === event.query.queryKey[0])) return false;
+  if (event.type === "added" || event.type === "removed") return true;
+  return event.type === "updated" && (event.action.type === "success" || event.action.type === "setState");
+}
+
+interface MemoRecordIndex {
+  records?: Map<string, Memo>;
+}
+
+const memoRecordIndexes = new WeakMap<QueryCache, MemoRecordIndex>();
+
+function getMemoRecordIndex(queryCache: QueryCache): MemoRecordIndex {
+  let index = memoRecordIndexes.get(queryCache);
+  if (!index) {
+    const created: MemoRecordIndex = {};
+    queryCache.subscribe((event) => {
+      if (changesMemoRecords(event)) created.records = undefined;
+    });
+    memoRecordIndexes.set(queryCache, created);
+    index = created;
+  }
+  return index;
+}
+
+/**
+ * The freshest copy of every memo the memo queries hold, by name. It is rebuilt on the
+ * first read after a cache event that can change it, so a list of cards reading their
+ * memos costs one pass over the cache per change, not one per card.
+ */
+function getMemoRecords(queryCache: QueryCache): Map<string, Memo> {
+  const index = getMemoRecordIndex(queryCache);
+  if (!index.records) {
+    const records = new Map<string, Memo>();
+    const recordedAt = new Map<string, number>();
+    for (const root of MEMO_QUERY_ROOTS) {
+      for (const query of queryCache.findAll({ queryKey: root })) {
+        const { data, dataUpdatedAt } = query.state;
+        const isDetail = isMemo(data);
+        for (const memo of memosInQueryData(data)) {
+          const foundAt = recordedAt.get(memo.name) ?? -1;
+          if (dataUpdatedAt < foundAt || (dataUpdatedAt === foundAt && !isDetail)) continue;
+          records.set(memo.name, memo);
+          recordedAt.set(memo.name, dataUpdatedAt);
+        }
+      }
+    }
+    index.records = records;
+  }
+  return index.records;
+}
+
 /**
  * The freshest copy of a memo any query holds, by name: a detail, a shared memo, or
  * an entry in a list, comment page or month. `null` when a detail query recorded it as
@@ -178,19 +233,7 @@ export function findMemoInCollectionQueries(queryClient: QueryClient, name: stri
  */
 export function findMemoRecord(queryClient: QueryClient, name: string): Memo | null | undefined {
   if (queryClient.getQueryData(memoKeys.detail(name)) === null) return null;
-  let found: Memo | undefined;
-  let foundAt = -1;
-  for (const root of MEMO_QUERY_ROOTS) {
-    for (const query of queryClient.getQueryCache().findAll({ queryKey: root })) {
-      if (query.state.dataUpdatedAt < foundAt || (query.state.dataUpdatedAt === foundAt && !isMemo(query.state.data))) continue;
-      const memo = findMemoInQueryData(query.state.data, name);
-      if (memo) {
-        found = memo;
-        foundAt = query.state.dataUpdatedAt;
-      }
-    }
-  }
-  return found;
+  return getMemoRecords(queryClient.getQueryCache()).get(name);
 }
 
 function patchMemoInCollectionQueries(queryClient: QueryClient, update: MemoPatch) {
@@ -221,11 +264,14 @@ export function updateMemoReactions(queryClient: QueryClient, name: string, upda
 export function useMemoRecord(name: string): Memo | null | undefined {
   const queryClient = useQueryClient();
   const subscribe = useCallback(
-    (onChange: () => void) =>
-      queryClient.getQueryCache().subscribe((event) => {
-        const root = event.query.queryKey[0];
-        if (MEMO_QUERY_ROOTS.some((key) => key[0] === root)) onChange();
-      }),
+    (onChange: () => void) => {
+      const queryCache = queryClient.getQueryCache();
+      // The index subscribes first, so it is stale before any card reads it again.
+      getMemoRecordIndex(queryCache);
+      return queryCache.subscribe((event) => {
+        if (changesMemoRecords(event)) onChange();
+      });
+    },
     [queryClient],
   );
   const getSnapshot = useCallback(() => findMemoRecord(queryClient, name), [queryClient, name]);
