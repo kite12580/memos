@@ -53,7 +53,7 @@ columns in `fields`, and the outer `ORDER BY` uses `page.` columns.
 memo IDs, such as related memos and comments in a list. Keep the `+` if
 upstream edits the predicate.
 
-**Memo snippets cached** — `server/api/memo_service_snippet.go` (`snippetCache`),
+**Memo snippets cached** — `server/api/memo_service_snippet.go` (`snippetCache`, on `internal/recent`),
 `server/api/memo_service_snippet_test.go`, the `snippets` field in
 `server/api/api.go`, and `getMemoContentSnippet` in
 `server/api/memo_service_webhooks.go`. Snippets are cached by a hash of the
