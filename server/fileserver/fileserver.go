@@ -183,6 +183,12 @@ func (s *FileServerService) serveAttachmentFile(w http.ResponseWriter, r *http.R
 	if attachment.StorageType == storepb.AttachmentStorageType_EXTERNAL {
 		return serveExternalAttachment(w, r, attachment)
 	}
+	etag := attachmentETag(attachment)
+	w.Header().Set("ETag", etag)
+	if etagMatches(r.Header.Get("If-None-Match"), etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
 	if attachment.StorageType != storepb.AttachmentStorageType_LOCAL && attachment.StorageType != storepb.AttachmentStorageType_S3 {
 		attachment, err = s.Store.GetAttachment(ctx, &store.FindAttachment{ID: &attachment.ID, GetBlob: true})
 		if err != nil {
@@ -800,7 +806,7 @@ func (s *FileServerService) checkAttachmentPermission(ctx context.Context, r *ht
 		return access.MemoReadClassPrivate, nil
 	}
 
-	memo, err := s.Store.GetMemo(ctx, &store.FindMemo{ID: attachment.MemoID})
+	memo, err := s.Store.GetMemo(ctx, &store.FindMemo{ID: attachment.MemoID, ExcludeContent: true})
 	if err != nil {
 		return access.MemoReadClassPrivate, &httphandler.Error{Code: http.StatusInternalServerError, Message: "failed to find memo", Cause: err}
 	}
@@ -898,6 +904,23 @@ func parseDataURI(dataURI string) (string, []byte, error) {
 	}
 
 	return imageType, imageData, nil
+}
+
+// attachmentETag identifies the attachment's content, which is replaced only
+// together with its update time.
+func attachmentETag(attachment *store.Attachment) string {
+	return fmt.Sprintf(`"%s-%d-%d"`, attachment.UID, attachment.UpdatedTs, attachment.Size)
+}
+
+// etagMatches reports whether an If-None-Match header value lists etag.
+func etagMatches(ifNoneMatch, etag string) bool {
+	for candidate := range strings.SplitSeq(ifNoneMatch, ",") {
+		candidate = strings.TrimPrefix(strings.TrimSpace(candidate), "W/")
+		if candidate == etag || candidate == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 // isMediaType checks if the MIME type is video or audio.

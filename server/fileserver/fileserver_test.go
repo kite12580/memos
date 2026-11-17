@@ -363,6 +363,65 @@ func TestServeAttachmentFile_CanonicalRouteAndVisibilityAwareCache(t *testing.T)
 	require.Equal(t, privateAttachmentCacheControl, rec.Header().Get("Cache-Control"))
 }
 
+func TestServeAttachmentFileRevalidatesWithETagAfterAccessCheck(t *testing.T) {
+	ctx := context.Background()
+	svc, fs, _, cleanup := newShareAttachmentTestServices(ctx, t)
+	defer cleanup()
+
+	creator, err := svc.Store.CreateUser(ctx, &store.User{
+		Username: "etag-owner",
+		Role:     store.RoleUser,
+		Email:    "etag-owner@example.com",
+	})
+	require.NoError(t, err)
+	creatorCtx := context.WithValue(ctx, auth.UserIDContextKey, creator.ID)
+	attachment, err := svc.CreateAttachment(creatorCtx, &apipb.CreateAttachmentRequest{Attachment: &apipb.Attachment{
+		Filename: "etag.png",
+		Type:     "image/png",
+		Content:  []byte("etag image"),
+	}})
+	require.NoError(t, err)
+	memo, err := svc.CreateMemo(creatorCtx, &apipb.CreateMemoRequest{Memo: &apipb.Memo{
+		Content:     "etag",
+		Visibility:  apipb.Visibility_PUBLIC,
+		Attachments: []*apipb.Attachment{{Name: attachment.Name}},
+	}})
+	require.NoError(t, err)
+
+	e := http.NewServeMux()
+	fs.RegisterRoutes(e, http.HandlerFunc(httphandler.NotFound))
+	url := "/file/" + attachment.Name
+	get := func(ifNoneMatch string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		if ifNoneMatch != "" {
+			req.Header.Set("If-None-Match", ifNoneMatch)
+		}
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := get("")
+	require.Equal(t, http.StatusOK, rec.Code)
+	etag := rec.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+
+	rec = get(`"other", W/` + etag)
+	require.Equal(t, http.StatusNotModified, rec.Code)
+	require.Empty(t, rec.Body.String())
+	require.Equal(t, etag, rec.Header().Get("ETag"))
+	require.Equal(t, publicAttachmentCacheControl, rec.Header().Get("Cache-Control"))
+
+	require.Equal(t, http.StatusOK, get(`"other"`).Code)
+
+	_, err = svc.UpdateMemo(creatorCtx, &apipb.UpdateMemoRequest{
+		Memo:       &apipb.Memo{Name: memo.Name, Visibility: apipb.Visibility_PROTECTED},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"visibility"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, get(etag).Code)
+}
+
 func TestServeAttachmentFileMemoCreatorLifecycle(t *testing.T) {
 	ctx := context.Background()
 	svc, fs, stores, cleanup := newShareAttachmentTestServices(ctx, t)

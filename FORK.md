@@ -41,6 +41,13 @@ rewrites the static handler or the `release` script, carry both halves over.
 (`ErrLocalHostname`, `isLocalHostname`), `internal/linkmeta/html_meta_test.go`.
 Hosts under `localhost`, `local`, `home.arpa` and `internal` fail before DNS.
 
+**Attachment revalidation** — `server/fileserver/fileserver.go` (`attachmentETag`,
+`etagMatches`, the `If-None-Match` check in `serveAttachmentFile`, and
+`ExcludeContent` in `checkAttachmentPermission`), `server/fileserver/README.md`,
+`server/fileserver/fileserver_test.go`. The check must stay after
+`checkAttachmentPermission`, so a 304 never answers a request that would be
+denied.
+
 **SQLite memo list sorts narrow rows** — `store/db/sqlite/memo.go` (`ListMemos`).
 The query picks the page in a subquery over id and sort keys, then joins the
 full rows. Upstream edits to the field list, `WHERE` clauses or `ORDER BY` must
