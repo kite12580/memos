@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"image"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +26,7 @@ import (
 	"github.com/usememos/memos/core/access"
 	"github.com/usememos/memos/internal/httphandler"
 	"github.com/usememos/memos/internal/imagelimit"
+	"github.com/usememos/memos/internal/jpegmeta"
 	"github.com/usememos/memos/internal/motionphoto"
 	"github.com/usememos/memos/internal/profile"
 	"github.com/usememos/memos/internal/ratelimit"
@@ -130,7 +133,7 @@ func NewFileServerService(profile *profile.Profile, store *store.Store, secret s
 		Profile:             profile,
 		Store:               store,
 		authenticator:       auth.NewAuthenticator(store, secret),
-		thumbnailSemaphore:  semaphore.NewWeighted(maxConcurrentThumbnails),
+		thumbnailSemaphore:  semaphore.NewWeighted(int64(min(maxConcurrentThumbnails, runtime.GOMAXPROCS(0)))),
 		memoExportSemaphore: semaphore.NewWeighted(1),
 	}
 }
@@ -561,7 +564,13 @@ func hasThumbnailSensitiveMetadata(data []byte) bool {
 		}
 	}
 
-	lowerData := strings.ToLower(string(data))
+	lowerData := make([]byte, len(data))
+	for i, b := range data {
+		if 'A' <= b && b <= 'Z' {
+			b += 'a' - 'A'
+		}
+		lowerData[i] = b
+	}
 	for _, marker := range []string{
 		"hdrgm:",
 		"hdr gain map",
@@ -578,7 +587,7 @@ func hasThumbnailSensitiveMetadata(data []byte) bool {
 		"arib-std-b67",
 		"smpte st 2084",
 	} {
-		if strings.Contains(lowerData, marker) {
+		if bytes.Contains(lowerData, []byte(marker)) {
 			return true
 		}
 	}
@@ -592,7 +601,8 @@ func (s *FileServerService) generateThumbnail(ctx context.Context, attachment *s
 	// the header, and the upload path only enforces it for the formats it
 	// re-encodes, so a stored image may still declare far more pixels than
 	// the server is willing to allocate.
-	if err := s.checkThumbnailSourceBounds(ctx, attachment); err != nil {
+	orientation, err := s.probeThumbnailSource(ctx, attachment)
+	if err != nil {
 		return nil, err
 	}
 
@@ -602,15 +612,14 @@ func (s *FileServerService) generateThumbnail(ctx context.Context, attachment *s
 	}
 	defer reader.Close()
 
-	img, err := imaging.Decode(reader, imaging.AutoOrientation(true))
+	img, err := imaging.Decode(reader)
 	if err != nil {
 		return nil, errors.Wrapf(errThumbnailUnsupported, "failed to decode image: %v", err)
 	}
 
 	width, height := img.Bounds().Dx(), img.Bounds().Dy()
 	thumbnailWidth, thumbnailHeight := calculateThumbnailDimensions(width, height)
-
-	thumbnailImage := imaging.Resize(img, thumbnailWidth, thumbnailHeight, imaging.Lanczos)
+	thumbnailImage := orientImage(resizeThumbnail(img, thumbnailWidth, thumbnailHeight), orientation)
 
 	var buf bytes.Buffer
 	if err := imaging.Encode(&buf, thumbnailImage, imaging.JPEG, imaging.JPEGQuality(90)); err != nil {
@@ -623,18 +632,83 @@ func (s *FileServerService) generateThumbnail(ctx context.Context, attachment *s
 	return buf.Bytes(), nil
 }
 
-// checkThumbnailSourceBounds reads the image header and refuses images whose
-// declared dimensions exceed the decode budget.
-func (s *FileServerService) checkThumbnailSourceBounds(ctx context.Context, attachment *store.Attachment) error {
+// probeThumbnailSource reads the image header, refuses images whose declared
+// dimensions exceed the decode budget, and returns the EXIF orientation.
+func (s *FileServerService) probeThumbnailSource(ctx context.Context, attachment *store.Attachment) (int, error) {
 	reader, err := s.getAttachmentReader(ctx, attachment)
 	if err != nil {
-		return errors.Wrap(err, "failed to open image for size probe")
+		return 0, errors.Wrap(err, "failed to open image for size probe")
 	}
 	defer reader.Close()
-	if err := imagelimit.CheckReader(io.LimitReader(reader, thumbnailMetadataProbeSize)); err != nil {
-		return errors.Wrapf(errThumbnailUnsupported, "thumbnail source exceeds decode bounds: %v", err)
+	var header bytes.Buffer
+	if err := imagelimit.CheckReader(io.TeeReader(io.LimitReader(reader, thumbnailMetadataProbeSize), &header)); err != nil {
+		return 0, errors.Wrapf(errThumbnailUnsupported, "thumbnail source exceeds decode bounds: %v", err)
 	}
-	return nil
+	return jpegmeta.Orientation(&header), nil
+}
+
+// resizeThumbnail scales img to the thumbnail size with Lanczos. A decoded
+// JPEG is first box-averaged in YCbCr to no less than twice the target size,
+// which keeps the quality of filtering the full image at a fraction of its
+// memory and time.
+func resizeThumbnail(img image.Image, width, height int) *image.NRGBA {
+	if ycbcr, ok := img.(*image.YCbCr); ok {
+		if factor := max(ycbcr.Bounds().Dx(), ycbcr.Bounds().Dy()) / (2 * thumbnailMaxSize); factor > 1 {
+			img = shrinkYCbCr(ycbcr, factor)
+		}
+	}
+	return imaging.Resize(img, width, height, imaging.Lanczos)
+}
+
+// shrinkYCbCr averages factor×factor blocks of src, keeping its chroma subsampling.
+func shrinkYCbCr(src *image.YCbCr, factor int) *image.YCbCr {
+	b := src.Bounds()
+	dst := image.NewYCbCr(image.Rect(0, 0, b.Dx()/factor, b.Dy()/factor), src.SubsampleRatio)
+	shrinkPlane(dst.Y, dst.YStride, src.Y[src.YOffset(b.Min.X, b.Min.Y):], src.YStride, factor)
+	cOrigin := src.COffset(b.Min.X, b.Min.Y)
+	shrinkPlane(dst.Cb, dst.CStride, src.Cb[cOrigin:], src.CStride, factor)
+	shrinkPlane(dst.Cr, dst.CStride, src.Cr[cOrigin:], src.CStride, factor)
+	return dst
+}
+
+func shrinkPlane(dst []byte, dstStride int, src []byte, srcStride, factor int) {
+	for dy := range len(dst) / dstStride {
+		for dx := range dstStride {
+			sum, n := 0, 0
+			for y := dy * factor; y < (dy+1)*factor && y*srcStride < len(src); y++ {
+				row := src[y*srcStride : min((y+1)*srcStride, len(src))]
+				for x := dx * factor; x < (dx+1)*factor && x < len(row); x++ {
+					sum += int(row[x])
+					n++
+				}
+			}
+			if n > 0 {
+				dst[dy*dstStride+dx] = byte((sum + n/2) / n)
+			}
+		}
+	}
+}
+
+// orientImage applies an EXIF orientation to img.
+func orientImage(img *image.NRGBA, orientation int) *image.NRGBA {
+	switch orientation {
+	case 2:
+		return imaging.FlipH(img)
+	case 3:
+		return imaging.Rotate180(img)
+	case 4:
+		return imaging.FlipV(img)
+	case 5:
+		return imaging.Transpose(img)
+	case 6:
+		return imaging.Rotate270(img)
+	case 7:
+		return imaging.Transverse(img)
+	case 8:
+		return imaging.Rotate90(img)
+	default:
+		return img
+	}
 }
 
 // calculateThumbnailDimensions calculates the target dimensions for a thumbnail.

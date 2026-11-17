@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -1143,6 +1144,65 @@ func TestServeAttachmentFile_ThumbnailRefusesOversizedImage(t *testing.T) {
 	uid := strings.TrimPrefix(attachment.Name, "attachments/")
 	require.NoFileExists(t, filepath.Join(fs.Profile.Data, thumbnailCacheFolder, uid+".v2.jpeg"))
 	require.FileExists(t, filepath.Join(fs.Profile.Data, thumbnailCacheFolder, uid+".v2.jpeg"+thumbnailFailedMarkerSuffix))
+}
+
+// A photo stored sideways with EXIF orientation 6 gets an upright thumbnail:
+// the left half of the stored pixels becomes the top half.
+func TestServeAttachmentFile_ThumbnailAppliesOrientation(t *testing.T) {
+	ctx := context.Background()
+	svc, fs, _, cleanup := newShareAttachmentTestServices(ctx, t)
+	defer cleanup()
+
+	img := image.NewRGBA(image.Rect(0, 0, 2400, 1800))
+	for y := range 1800 {
+		for x := range 2400 {
+			c := color.RGBA{R: 220, G: 20, B: 20, A: 255}
+			if x >= 1200 {
+				c = color.RGBA{R: 20, G: 20, B: 220, A: 255}
+			}
+			img.Set(x, y, c)
+		}
+	}
+	var encoded bytes.Buffer
+	require.NoError(t, jpeg.Encode(&encoded, img, &jpeg.Options{Quality: 90}))
+	exif := []byte("Exif\x00\x00MM\x00\x2A\x00\x00\x00\x08\x00\x01\x01\x12\x00\x03\x00\x00\x00\x01\x00\x06\x00\x00\x00\x00\x00\x00")
+	content := append([]byte{0xFF, 0xD8, 0xFF, 0xE1, 0, byte(len(exif) + 2)}, exif...)
+	content = append(content, encoded.Bytes()[2:]...)
+	attachment := createPublicImageMemo(ctx, t, svc, "oriented-owner", "sideways.jpg", "image/jpeg", content)
+
+	e := http.NewServeMux()
+	fs.RegisterRoutes(e, http.HandlerFunc(httphandler.NotFound))
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/file/%s/sideways.jpg?thumbnail=true", attachment.Name), nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "image/jpeg", rec.Header().Get("Content-Type"))
+	thumbnail, err := jpeg.Decode(rec.Body)
+	require.NoError(t, err)
+	require.Equal(t, image.Rect(0, 0, 450, 600), thumbnail.Bounds())
+	top, _, topBlue, _ := thumbnail.At(225, 100).RGBA()
+	bottomRed, _, bottom, _ := thumbnail.At(225, 500).RGBA()
+	require.Greater(t, top, topBlue, "top half is the stored left half")
+	require.Greater(t, bottom, bottomRed, "bottom half is the stored right half")
+}
+
+func TestShrinkYCbCrAveragesBlocks(t *testing.T) {
+	t.Parallel()
+	src := image.NewYCbCr(image.Rect(0, 0, 5, 4), image.YCbCrSubsampleRatio420)
+	for i := range src.Y {
+		src.Y[i] = byte(i * 10)
+	}
+	for i := range src.Cb {
+		src.Cb[i], src.Cr[i] = byte(100+i), byte(200-i)
+	}
+
+	dst := shrinkYCbCr(src, 2)
+	require.Equal(t, image.Rect(0, 0, 2, 2), dst.Bounds())
+	require.Equal(t, image.YCbCrSubsampleRatio420, dst.SubsampleRatio)
+	// Luma rows are 0,10,..,40 / 50,..,90 / 100,..,140 / 150,..,190.
+	require.Equal(t, []byte{30, 50, 130, 150}, dst.Y)
+	// The one chroma sample averages the first 2×2 block of the 3×2 plane.
+	require.Equal(t, []byte{102}, dst.Cb)
+	require.Equal(t, []byte{198}, dst.Cr)
 }
 
 // newSharedProfileTestServices builds the API service, file server, and
