@@ -122,7 +122,7 @@ func (s *APIService) projectMemoCollaborationContext(ctx context.Context, memo *
 	if viewer == nil || (viewer.ID != memo.CreatorID && !readContext.ViewerSpaceMember && !access.IsInstanceAdmin(viewer)) {
 		return nil
 	}
-	space, err := s.Store.GetSpace(ctx, &store.FindSpace{ID: memo.SpaceID})
+	space, err := s.memoReadStore(ctx).GetSpace(ctx, &store.FindSpace{ID: memo.SpaceID})
 	if err != nil {
 		return err
 	}

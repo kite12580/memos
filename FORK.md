@@ -95,6 +95,15 @@ expression is cached; the condition is rebuilt each time because it folds
 `LIMIT` and `OFFSET` as arguments so every page shares one statement. If
 upstream rewrites one of those queries, keep it on `d.stmts.query`.
 
+**Space reads shared across a memo list** — `server/api/memo_access.go`
+(`memoReadCache`, `withMemoReadCache`, `memoReadStore`, `allowsAnonymousAccess`),
+`readCtx` in the conversion loops of `ListMemos` (`server/api/memo_service.go`)
+and `ListMemoComments` (`server/api/memo_service_comments.go`), the `GetSpace`
+in `projectMemoCollaborationContext`, and `BenchmarkListSpaceMemos`. The access
+rules are unchanged; only their store reads are memoized for one request. If
+upstream adds a store read to `access.MemoReadStore`, add it to
+`memoReadCache`.
+
 **User stats read in one query** — `server/api/user_service_stats.go`.
 `GetUserStats` and `ListUserStats` call `ListMemos` once instead of paging by
 1,000 with `OFFSET`. Conflicts here are usually upstream edits inside the

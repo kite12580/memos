@@ -344,3 +344,39 @@ func BenchmarkListMemosLargeAttachments(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkListSpaceMemos(b *testing.B) {
+	ctx := context.Background()
+	ts := newTestingServiceForTB(b)
+	owner, err := ts.CreateRegularUser(ctx, "space-bench-owner")
+	require.NoError(b, err)
+	member, err := ts.CreateRegularUser(ctx, "space-bench-member")
+	require.NoError(b, err)
+	space, err := ts.Store.CreateSpace(ctx, &store.Space{UID: "space-bench", Title: "Bench"}, owner.ID)
+	require.NoError(b, err)
+	_, err = ts.InviteAndAcceptSpaceMember(ctx, &store.SpaceMember{SpaceID: space.ID, UserID: member.ID, Role: store.SpaceMemberRoleUser}, owner.ID)
+	require.NoError(b, err)
+	for i := range 200 {
+		_, err := ts.Store.CreateMemo(ctx, &store.Memo{
+			UID:        fmt.Sprintf("space-bench-%03d", i),
+			CreatorID:  owner.ID,
+			Content:    benchmarkMemoContent(i),
+			Visibility: store.SpaceAudience,
+			SpaceID:    &space.ID,
+		})
+		require.NoError(b, err)
+	}
+
+	memberCtx := context.WithValue(ctx, auth.UserIDContextKey, member.ID)
+	req := &apipb.ListMemosRequest{PageSize: benchmarkPageSize}
+	b.ReportAllocs()
+	for b.Loop() {
+		resp, err := ts.Service.ListMemos(memberCtx, req)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(resp.Memos) != benchmarkPageSize || resp.Memos[0].Space == nil {
+			b.Fatal("expected a full page of space memos")
+		}
+	}
+}

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	stderrors "errors"
+	"sync"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
@@ -21,7 +22,7 @@ func (s *APIService) buildMemoReadContext(ctx context.Context, memo *store.Memo,
 	}
 	allowAnonymous := false
 	if viewer == nil {
-		allowAnonymous, err = s.Store.AllowsAnonymousAccess(ctx)
+		allowAnonymous, err = s.allowsAnonymousAccess(ctx)
 		if err != nil {
 			return access.MemoReadContext{}, status.Errorf(codes.Internal, "failed to resolve instance access policy")
 		}
@@ -33,7 +34,7 @@ func (s *APIService) buildMemoReadContextForViewer(ctx context.Context, memo *st
 	if memo == nil {
 		return access.MemoReadContext{}, status.Error(codes.NotFound, "memo not found")
 	}
-	readContext, err := access.ResolveMemoReadContext(ctx, s.Store, memo, viewer, allowAnonymous, sharedMemoID)
+	readContext, err := access.ResolveMemoReadContext(ctx, s.memoReadStore(ctx), memo, viewer, allowAnonymous, sharedMemoID)
 	if err != nil {
 		return access.MemoReadContext{}, status.Errorf(codes.Internal, "failed to resolve memo access")
 	}
@@ -207,4 +208,97 @@ func (s *APIService) requireAssignedMemoWritable(ctx context.Context, memo *stor
 		return status.Errorf(codes.PermissionDenied, "active space membership is required")
 	}
 	return nil
+}
+
+type memoReadCacheKey struct{}
+
+// memoReadCache holds the Space reads of one memo list conversion, so the memos
+// of a page that share a Space look it and the viewer's membership up once. It
+// lives only as long as the request that lists them.
+type memoReadCache struct {
+	store *store.Store
+
+	mu             sync.Mutex
+	spaces         map[int32]*store.Space
+	members        map[memoReadMemberKey]*store.SpaceMember
+	allowAnonymous *bool
+}
+
+type memoReadMemberKey struct {
+	spaceID int32
+	userID  int32
+}
+
+// withMemoReadCache returns a context whose memo read contexts and placement
+// projections share one memoReadCache.
+func withMemoReadCache(ctx context.Context, s *store.Store) context.Context {
+	return context.WithValue(ctx, memoReadCacheKey{}, &memoReadCache{
+		store:   s,
+		spaces:  map[int32]*store.Space{},
+		members: map[memoReadMemberKey]*store.SpaceMember{},
+	})
+}
+
+// memoReadStore returns the context's memoReadCache, or the store itself.
+func (s *APIService) memoReadStore(ctx context.Context) access.MemoReadStore {
+	if cache, ok := ctx.Value(memoReadCacheKey{}).(*memoReadCache); ok {
+		return cache
+	}
+	return s.Store
+}
+
+func (s *APIService) allowsAnonymousAccess(ctx context.Context) (bool, error) {
+	cache, ok := ctx.Value(memoReadCacheKey{}).(*memoReadCache)
+	if !ok {
+		return s.Store.AllowsAnonymousAccess(ctx)
+	}
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if cache.allowAnonymous == nil {
+		allow, err := s.Store.AllowsAnonymousAccess(ctx)
+		if err != nil {
+			return false, err
+		}
+		cache.allowAnonymous = &allow
+	}
+	return *cache.allowAnonymous, nil
+}
+
+func (c *memoReadCache) GetUser(ctx context.Context, find *store.FindUser) (*store.User, error) {
+	return c.store.GetUser(ctx, find)
+}
+
+func (c *memoReadCache) GetSpace(ctx context.Context, find *store.FindSpace) (*store.Space, error) {
+	if find.ID == nil || len(find.IDList) > 0 || find.UID != nil || find.MemberUserID != nil || find.Limit != nil || find.Offset != nil {
+		return c.store.GetSpace(ctx, find)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if space, ok := c.spaces[*find.ID]; ok {
+		return space, nil
+	}
+	space, err := c.store.GetSpace(ctx, find)
+	if err != nil {
+		return nil, err
+	}
+	c.spaces[*find.ID] = space
+	return space, nil
+}
+
+func (c *memoReadCache) GetSpaceMember(ctx context.Context, find *store.FindSpaceMember) (*store.SpaceMember, error) {
+	if find.SpaceID == nil || find.UserID == nil || find.ViewerUserID != nil || find.Limit != nil || find.Offset != nil {
+		return c.store.GetSpaceMember(ctx, find)
+	}
+	key := memoReadMemberKey{spaceID: *find.SpaceID, userID: *find.UserID}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if member, ok := c.members[key]; ok {
+		return member, nil
+	}
+	member, err := c.store.GetSpaceMember(ctx, find)
+	if err != nil {
+		return nil, err
+	}
+	c.members[key] = member
+	return member, nil
 }

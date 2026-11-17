@@ -208,12 +208,13 @@ func (s *APIService) ListMemos(ctx context.Context, request *apipb.ListMemosRequ
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list memo creators: %v", err)
 	}
+	readCtx := withMemoReadCache(ctx, s.Store)
 	for _, memo := range memos {
 		reactions := reactionMap[memo.ID]
 		attachments := attachmentMap[memo.ID]
 		relations := relationMap[memo.ID]
 
-		memoMessage, err := s.convertMemoFromStoreWithCreators(ctx, memo, reactions, attachments, relations, creatorMap)
+		memoMessage, err := s.convertMemoFromStoreWithCreators(readCtx, memo, reactions, attachments, relations, creatorMap)
 		if err != nil {
 			if stderrors.Is(err, errMemoCreatorNotFound) {
 				slog.Warn("Skipping memo with missing creator",
