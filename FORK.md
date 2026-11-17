@@ -196,3 +196,23 @@ publishes `ghcr.io/<owner>/<repo>` for amd64 and arm64 on every push to
 Set `GOMEMLIMIT` (for example `200MiB`) in the deployment environment. Go
 returns freed heap to the OS slowly after bursts such as uploads; a soft limit
 makes it collect before memory gets tight.
+
+## Potential improvements
+
+Not implemented yet; listed so they are not rediscovered from scratch.
+
+**Static rendering of read-only memo cards** — every card in a list mounts its
+own read-only `@usememos/editor` instance (`MemoContentView` in
+`web/src/components/MemoEditor/view/`), and the editor builds its view after
+the first paint. That is now the main cost of rendering a list and of keeping a
+long one in memory. A lighter renderer for read-only cards, with the editor
+mounted only for editing, would have to keep what the read-only view does
+today: task ticking for owners, tag and mention navigation, in-memo anchors,
+link preview cards and search-match highlighting. Measure per-card render time
+and heap with a few hundred memos loaded before starting.
+
+**Tried and rejected: `content-visibility: auto` on flow-list cards.** With
+416 cards it cut a list relayout from 8.1 ms to 0.7 ms, but Chrome dropped the
+skipped cards from the accessibility tree (14 of 416 left), so screen readers
+could no longer reach them. The masonry grid cannot use it at all, because it
+measures every card's height.
