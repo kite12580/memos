@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -35,4 +37,15 @@ func TestRegexpCacheStaysBounded(t *testing.T) {
 	count := 0
 	regexpCache.Range(func(_, _ any) bool { count++; return true })
 	require.LessOrEqual(t, count, maxRegexpCacheEntries)
+}
+
+func TestFoldCaseMatchesUnicodeFolding(t *testing.T) {
+	t.Parallel()
+	var ascii strings.Builder
+	for b := range utf8.RuneSelf {
+		ascii.WriteByte(byte(b))
+	}
+	for _, value := range []string{ascii.String(), "Hello World #Tag", "already lower", "Straße KELVIN K", "ÀÉÎ mixed ASCII"} {
+		require.Equal(t, unicodeFold.String(value), foldCase(value), value)
+	}
 }

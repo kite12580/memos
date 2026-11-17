@@ -7,8 +7,10 @@ import (
 	"database/sql/driver"
 	"errors"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode/utf8"
 
 	"golang.org/x/text/cases"
 	msqlite "modernc.org/sqlite"
@@ -35,15 +37,25 @@ func ensureUnicodeLowerRegistered() error {
 			}
 			switch v := args[0].(type) {
 			case string:
-				return unicodeFold.String(v), nil
+				return foldCase(v), nil
 			case []byte:
-				return unicodeFold.String(string(v)), nil
+				return foldCase(string(v)), nil
 			default:
 				return v, nil
 			}
 		})
 	})
 	return registerUnicodeLowerErr
+}
+
+// foldCase applies Unicode case folding, which on ASCII text is lowercasing.
+func foldCase(s string) string {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return unicodeFold.String(s)
+		}
+	}
+	return strings.ToLower(s)
 }
 
 var (
