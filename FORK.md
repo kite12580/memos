@@ -76,8 +76,10 @@ content, so a changed memo misses on its own. If upstream changes the snippet
 length or `GenerateSnippet`, nothing else needs to change; if it moves
 `getMemoContentSnippet`, carry the lookup along.
 
-**SQLite idle connections** — `store/db/sqlite/sqlite.go` (`SetMaxIdleConns(4)`,
-`SetConnMaxIdleTime`).
+**SQLite connection settings** — `store/db/sqlite/sqlite.go`: `SetMaxIdleConns(4)`,
+`SetConnMaxIdleTime`, and `_pragma=synchronous(NORMAL)` in the DSN. With NORMAL
+a power loss can roll back the last commits, never corrupt the database. Keep
+the pragma if upstream edits the DSN.
 
 **Checked filter expressions cached** — `internal/recent/` (generic cache, tests),
 `internal/README.md`, `filter/engine.go` (`Engine.parsed`, used in `Compile`),

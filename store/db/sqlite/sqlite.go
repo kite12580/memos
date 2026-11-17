@@ -43,6 +43,9 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 	// - Journal mode set to WAL: it's the recommended journal mode for most applications
 	// as it prevents locking issues.
 	// - mmap size set to 0: it disables memory mapping, which can cause OOM errors on some systems.
+	// - Synchronous set to NORMAL: in WAL mode a commit then waits for no fsync, only
+	//   checkpoints do. A power loss can roll back the last commits but cannot
+	//   corrupt the database; an application crash loses nothing.
 	// - Transactions begin IMMEDIATE: several drivers' transactions read before they
 	//   write (a membership or lifecycle check, then an insert). With the default
 	//   DEFERRED mode such a transaction holds a read snapshot when it tries to
@@ -59,7 +62,7 @@ func NewDB(profile *profile.Profile) (store.Driver, error) {
 	// - https://pkg.go.dev/modernc.org/sqlite#Driver.Open
 	// - https://www.sqlite.org/sharedcache.html
 	// - https://www.sqlite.org/pragma.html
-	sqliteDB, err := sql.Open("sqlite", profile.DSN+"?_pragma=foreign_keys(0)&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=mmap_size(0)&_txlock=immediate")
+	sqliteDB, err := sql.Open("sqlite", profile.DSN+"?_pragma=foreign_keys(0)&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=mmap_size(0)&_pragma=synchronous(NORMAL)&_txlock=immediate")
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open db with dsn: %s", profile.DSN)
 	}
