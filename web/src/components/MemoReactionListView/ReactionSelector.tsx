@@ -1,7 +1,7 @@
 import { Button, Combobox, Popover, Tooltip } from "@usememos/ui";
 import { SmilePlusIcon } from "lucide-react";
-import { type ReactElement, type RefObject, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { findEmoji } from "@/lib/emoji";
+import { type ReactElement, type RefObject, Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { loadEmojiCatalog, useEmojiCatalog } from "@/hooks/useEmojiCatalog";
 import type { Memo } from "@/types/proto/api/memo_service_pb";
 import { useTranslate } from "@/utils/i18n";
 import { useReactionActions } from "./hooks";
@@ -23,6 +23,7 @@ interface EmojiGridProps {
 
 function EmojiGrid({ searchRef, hasReacted, onSelect, onClose }: EmojiGridProps) {
   const t = useTranslate();
+  const { findEmoji } = useEmojiCatalog();
   const [query, setQuery] = useState("");
   const [scrollRow, setScrollRow] = useState(0);
   const [highlightedRow, setHighlightedRow] = useState<number>();
@@ -40,6 +41,10 @@ function EmojiGrid({ searchRef, hasReacted, onSelect, onClose }: EmojiGridProps)
       if (row >= 0 && row < rowCount) rows.add(row);
     }
   }
+
+  useLayoutEffect(() => {
+    searchRef.current?.focus({ preventScroll: true });
+  }, [searchRef]);
 
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -171,6 +176,8 @@ const ReactionSelector = ({ memo, trigger }: Props) => {
           render={
             <Popover.Trigger
               ref={triggerRef}
+              onPointerEnter={loadEmojiCatalog}
+              onFocus={loadEmojiCatalog}
               aria-label={t("memo.add-reaction")}
               aria-disabled={isPending}
               render={trigger ?? <Button variant="ghost" shape="pill" size="sm" icon={<SmilePlusIcon />} />}
@@ -187,14 +194,16 @@ const ReactionSelector = ({ memo, trigger }: Props) => {
         style={{ width: `calc(${COLUMNS} * var(--mu-row-height) + ${COLUMNS - 1} * var(--mu-inset) + 2 * var(--mu-space-3))` }}
       >
         {open && (
-          <EmojiGrid
-            searchRef={searchRef}
-            hasReacted={hasReacted}
-            onClose={close}
-            onSelect={(emoji) => {
-              if (handleReactionClick(emoji)) close();
-            }}
-          />
+          <Suspense fallback={null}>
+            <EmojiGrid
+              searchRef={searchRef}
+              hasReacted={hasReacted}
+              onClose={close}
+              onSelect={(emoji) => {
+                if (handleReactionClick(emoji)) close();
+              }}
+            />
+          </Suspense>
         )}
       </Popover.Popup>
     </Popover.Root>

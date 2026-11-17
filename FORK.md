@@ -91,6 +91,14 @@ switch in `startTransition`). The sidebar imports the section list for its label
 so eager section imports would put every section in the entry chunk. A section
 added by upstream must use `lazyWithReload` too.
 
+**Emoji catalog loaded on demand** — `web/src/hooks/useEmojiCatalog.ts`,
+`web/src/components/MemoReactionListView/ReactionSelector.tsx` (the grid suspends
+on the catalog and focuses its search when it mounts),
+`web/src/components/MemoReactionListView/ReactionView.tsx` (`useEmojiName`), and
+the `openPicker` helpers in `web/tests/reaction-selector.test.tsx` and
+`web/tests/reaction-picker-window.test.tsx`. New code must import `@/lib/emoji`
+through the hook, not directly, or the catalog returns to the memo list chunk.
+
 ## CI
 
 **Fork image** — `.github/workflows/fork-image.yml`. Builds the frontend and

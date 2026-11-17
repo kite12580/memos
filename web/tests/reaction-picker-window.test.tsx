@@ -18,7 +18,7 @@ const setup = async () => {
   );
   fireEvent.click(screen.getByRole("button", { name: "memo.add-reaction" }));
   const picker = within(await screen.findByRole("dialog"));
-  return { picker, search: picker.getByRole("combobox"), grid: picker.getByRole("grid") };
+  return { picker, search: await picker.findByRole("combobox"), grid: picker.getByRole("grid") };
 };
 
 const activeCell = (search: HTMLElement) => document.getElementById(search.getAttribute("aria-activedescendant") ?? "");

@@ -1,6 +1,6 @@
 import { Toggle, Tooltip } from "@usememos/ui";
 import { useEffect, useId, useRef, useState } from "react";
-import { emojiName } from "@/lib/emoji";
+import { useEmojiName } from "@/hooks/useEmojiCatalog";
 import { cn } from "@/lib/utils";
 import type { Memo } from "@/types/proto/api/memo_service_pb";
 import { useReactionActions } from "./hooks";
@@ -14,6 +14,7 @@ interface Props {
 
 const ReactionView = ({ memo, reactionType, count, names }: Props) => {
   const { hasReacted, handleReactionClick, isPending, canReact, canWithdraw } = useReactionActions({ memo });
+  const reactionName = useEmojiName(reactionType);
   const pressed = hasReacted(reactionType);
   const clickable = canReact || (canWithdraw && pressed);
   const [open, setOpen] = useState(false);
@@ -28,7 +29,7 @@ const ReactionView = ({ memo, reactionType, count, names }: Props) => {
       <span className="mu-caption tabular-nums">{count}</span>
     </span>
   );
-  const accessibleName = `${emojiName(reactionType)}: ${count} · ${names.join(", ")}`;
+  const accessibleName = `${reactionName}: ${count} · ${names.join(", ")}`;
 
   return (
     <Tooltip.Root open={open} onOpenChange={setOpen} triggerId={triggerId}>

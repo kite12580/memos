@@ -71,7 +71,9 @@ const setup = (memo = reactionMemo(), trigger?: ReactElement) => {
 };
 const openPicker = async () => {
   fireEvent.click(screen.getByRole("button", { name: "memo.add-reaction" }));
-  return within(await screen.findByRole("dialog", { name: "memo.add-reaction" }));
+  const picker = within(await screen.findByRole("dialog", { name: "memo.add-reaction" }));
+  await picker.findByRole("combobox");
+  return picker;
 };
 
 describe("ReactionSelector", () => {
