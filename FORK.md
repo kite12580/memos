@@ -29,6 +29,11 @@ statements from `LATEST.sql`. If upstream edits the `memo` index block of a
 signs in as the oldest active admin. Conflicts are most likely in
 `connect_services.go` if upstream changes the `RefreshToken` handler.
 
+**PAT last-used time recorded once a minute** — `server/auth/authenticator.go`
+(`patLastUsedResolution`, the check before `recordPATUsage` in `resolveBearer`),
+`server/api/test/auth_test.go` (`records last used time at most once a minute`).
+A token's last-used time can lag by up to a minute.
+
 **Precompressed frontend assets** — `server/frontend/frontend.go`
 (`precompressedVariant`, `acceptsEncoding`), `server/frontend/frontend_test.go`,
 `web/scripts/precompress-dist.mjs`, and the `release` script in

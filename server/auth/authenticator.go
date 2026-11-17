@@ -178,8 +178,9 @@ type bearerAuth struct {
 //   - (nil, err)    on an unexpected store error;
 //   - (result, nil) on success.
 //
-// Successful PAT resolution records the token's last-used time, so every entry
-// point that authenticates through here gets usage tracking for free.
+// Successful PAT resolution records the token's last-used time, at most once per
+// patLastUsedResolution, so every entry point that authenticates through here
+// gets usage tracking for free.
 func (a *Authenticator) resolveBearer(ctx context.Context, token string) (*bearerAuth, error) {
 	if token == "" {
 		return nil, nil
@@ -198,9 +199,15 @@ func (a *Authenticator) resolveBearer(ctx context.Context, token string) (*beare
 		}
 		return nil, err
 	}
-	a.recordPATUsage(user.ID, pat.TokenId)
+	if pat.LastUsedAt == nil || time.Since(pat.LastUsedAt.AsTime()) >= patLastUsedResolution {
+		a.recordPATUsage(user.ID, pat.TokenId)
+	}
 	return &bearerAuth{user: user, pat: pat}, nil
 }
+
+// patLastUsedResolution is how stale a personal access token's last-used time
+// may get before a request using the token records it again.
+const patLastUsedResolution = time.Minute
 
 // recordPATUsage updates a personal access token's last-used timestamp
 // asynchronously; failures are logged and never affect the request.

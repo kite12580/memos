@@ -332,6 +332,51 @@ func TestAuthenticatorPAT(t *testing.T) {
 		}, time.Second, 10*time.Millisecond)
 	})
 
+	t.Run("records last used time at most once a minute", func(t *testing.T) {
+		ts := NewTestService(t)
+		defer ts.Cleanup()
+
+		user, err := ts.CreateRegularUser(ctx, "pat-last-used-throttle")
+		require.NoError(t, err)
+		authenticator := auth.NewAuthenticator(ts.Store, ts.Secret)
+
+		addToken := func(lastUsed time.Time) (string, string) {
+			token := auth.GeneratePersonalAccessToken()
+			tokenID := random.UUID()
+			require.NoError(t, ts.Store.AddUserPersonalAccessToken(ctx, user.ID, &storepb.PersonalAccessTokensUserSetting_PersonalAccessToken{
+				TokenId:    tokenID,
+				TokenHash:  auth.HashPersonalAccessToken(token),
+				CreatedAt:  timestamppb.Now(),
+				LastUsedAt: timestamppb.New(lastUsed),
+			}))
+			return token, tokenID
+		}
+		lastUsedAt := func(tokenID string) time.Time {
+			pats, err := ts.Store.GetUserPersonalAccessTokens(ctx, user.ID)
+			require.NoError(t, err)
+			for _, pat := range pats {
+				if pat.TokenId == tokenID {
+					return pat.LastUsedAt.AsTime()
+				}
+			}
+			t.Fatalf("token %s not found", tokenID)
+			return time.Time{}
+		}
+
+		recent := time.Now().Add(-30 * time.Second).Truncate(time.Second)
+		recentToken, recentID := addToken(recent)
+		stale := time.Now().Add(-2 * time.Minute).Truncate(time.Second)
+		staleToken, staleID := addToken(stale)
+
+		_, err = authenticator.AuthenticateToUser(ctx, "Bearer "+recentToken, "")
+		require.NoError(t, err)
+		_, err = authenticator.AuthenticateToUser(ctx, "Bearer "+staleToken, "")
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool { return lastUsedAt(staleID).After(stale) }, time.Second, 10*time.Millisecond)
+		require.True(t, lastUsedAt(recentID).Equal(recent))
+	})
+
 	t.Run("fails with invalid PAT format", func(t *testing.T) {
 		ts := NewTestService(t)
 		defer ts.Cleanup()
