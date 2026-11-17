@@ -75,7 +75,20 @@ func startsNonCombiningXIDContinuation(source []byte) bool {
 	return isXIDContinue(r) && !isCombiningMark(r) && !isDefaultIgnorable(r)
 }
 
+var emoji17FirstRunes = func() map[rune]struct{} {
+	runes := make(map[rune]struct{})
+	for emoji := range emoji17FullyQualified {
+		r, _ := utf8.DecodeRuneInString(emoji)
+		runes[r] = struct{}{}
+	}
+	return runes
+}()
+
 func matchFullyQualifiedEmoji(source []byte) int {
+	first, _ := utf8.DecodeRune(source)
+	if _, ok := emoji17FirstRunes[first]; !ok {
+		return 0
+	}
 	limit := min(len(source), maxEmoji17SequenceBytes)
 	match := 0
 	for pos := 0; pos < limit; {

@@ -151,7 +151,7 @@ func replaceUnparsedGFMURLs(document *ast.Document, source []byte) {
 		segment := textNode.Segment
 		var matches []inlineNodeMatch
 		for offset := segment.Start; offset < segment.Stop; offset++ {
-			if !hasWrittenGFMURLBoundary(source, offset) {
+			if !hasWrittenGFMURLBoundary(source, offset) || !hasGFMURLPrefix(source[offset:segment.Stop]) {
 				continue
 			}
 
@@ -203,6 +203,12 @@ func autoLinkLabelStart(link *ast.AutoLink, source, label []byte) (int, bool) {
 func isAngleAutoLink(source []byte, labelStart, labelLength int) bool {
 	return labelStart > 0 && labelStart+labelLength < len(source) &&
 		source[labelStart-1] == '<' && source[labelStart+labelLength] == '>'
+}
+
+// hasGFMURLPrefix reports whether text starts the way hasValidGFMDomain
+// requires a label to, so the linkify parser runs only where it can match.
+func hasGFMURLPrefix(text []byte) bool {
+	return bytes.HasPrefix(text, []byte("http://")) || bytes.HasPrefix(text, []byte("https://")) || bytes.HasPrefix(text, []byte("www."))
 }
 
 func hasValidGFMDomain(label []byte) bool {
