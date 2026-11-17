@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stretchr/testify/require"
 
@@ -118,6 +120,49 @@ func TestFrontendService_StaticCacheHeaders(t *testing.T) {
 			require.Equal(t, tt.expires, rec.Header().Get("Expires"))
 		})
 	}
+}
+
+func TestFrontendService_ServesPrecompressedAssets(t *testing.T) {
+	script := strings.Repeat("console.log('memos');\n", 200)
+	handler := newStaticHandler(fstest.MapFS{
+		"assets/index-abc.js":    {Data: []byte(script)},
+		"assets/index-abc.js.br": {Data: []byte("brotli")},
+		"assets/index-abc.js.gz": {Data: []byte("gzip")},
+		"assets/photo-abc.png":   {Data: []byte("png")},
+	}, http.HandlerFunc(httphandler.NotFound))
+
+	serve := func(path string, header http.Header) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header = header
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Less(t, rec.Code, http.StatusMultipleChoices)
+		return rec
+	}
+
+	for name, tc := range map[string]struct {
+		header   http.Header
+		encoding string
+		body     string
+	}{
+		"brotli preferred":    {header: http.Header{"Accept-Encoding": {"gzip, deflate, br"}}, encoding: "br", body: "brotli"},
+		"brotli refused":      {header: http.Header{"Accept-Encoding": {"br;q=0, gzip"}}, encoding: "gzip", body: "gzip"},
+		"no accept-encoding":  {header: http.Header{}, body: script},
+		"all codings refused": {header: http.Header{"Accept-Encoding": {"br;q=0, gzip;q=0"}}, body: script},
+		"range request":       {header: http.Header{"Accept-Encoding": {"br, gzip"}, "Range": {"bytes=0-9"}}, body: script[:10]},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := serve("/assets/index-abc.js", tc.header)
+			require.Equal(t, tc.encoding, rec.Header().Get("Content-Encoding"))
+			require.Equal(t, []string{"Accept-Encoding"}, rec.Header().Values("Vary"))
+			require.Contains(t, rec.Header().Get("Content-Type"), "javascript")
+			require.Equal(t, tc.body, rec.Body.String())
+		})
+	}
+
+	rec := serve("/assets/photo-abc.png", http.Header{"Accept-Encoding": {"br, gzip"}})
+	require.Empty(t, rec.Header().Get("Content-Encoding"))
+	require.Empty(t, rec.Header().Values("Vary"))
 }
 
 func TestFrontendService_MissingAssetsAreNotCached(t *testing.T) {

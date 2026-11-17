@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -46,7 +47,10 @@ func (s *FrontendService) Serve(_ context.Context, mux *http.ServeMux, fallback 
 
 // Handler serves static files and SPA routes, passing API namespaces to fallback.
 func (*FrontendService) Handler(fallback http.Handler) http.Handler {
-	frontendFS := getFileSystem("dist")
+	return newStaticHandler(getFileSystem("dist"), fallback)
+}
+
+func newStaticHandler(frontendFS fs.FS, fallback http.Handler) http.Handler {
 	return httphandler.Func(func(w http.ResponseWriter, r *http.Request) error {
 		requestPath := r.URL.Path
 		if shouldSkipFrontendStatic(requestPath) {
@@ -84,9 +88,68 @@ func (*FrontendService) Handler(fallback http.Handler) http.Handler {
 		if !ok {
 			return errors.New("frontend file does not support seeking")
 		}
+		if encodedName, coding := precompressedVariant(w, r, frontendFS, filename); encodedName != "" {
+			encoded, err := frontendFS.Open(encodedName)
+			if err != nil {
+				return err
+			}
+			defer encoded.Close()
+			encodedContent, ok := encoded.(io.ReadSeeker)
+			if !ok {
+				return errors.New("frontend file does not support seeking")
+			}
+			w.Header().Set("Content-Encoding", coding)
+			http.ServeContent(w, r, info.Name(), info.ModTime(), encodedContent)
+			return nil
+		}
 		http.ServeContent(w, r, info.Name(), info.ModTime(), content)
 		return nil
 	})
+}
+
+// precompressedEncodings lists the copies `pnpm release` writes next to each text asset, most preferred first.
+var precompressedEncodings = []struct{ coding, suffix string }{
+	{coding: "br", suffix: ".br"},
+	{coding: "gzip", suffix: ".gz"},
+}
+
+// precompressedVariant returns the encoded copy of filename to serve and its content coding, or "" for the file itself.
+// It adds Vary whenever an encoded copy exists, since the response then depends on Accept-Encoding.
+func precompressedVariant(w http.ResponseWriter, r *http.Request, frontendFS fs.FS, filename string) (string, string) {
+	var selected, coding string
+	varies := false
+	for _, encoding := range precompressedEncodings {
+		encodedName := filename + encoding.suffix
+		if _, err := fs.Stat(frontendFS, encodedName); err != nil {
+			continue
+		}
+		varies = true
+		if selected == "" && r.Header.Get("Range") == "" && acceptsEncoding(r, encoding.coding) {
+			selected, coding = encodedName, encoding.coding
+		}
+	}
+	if varies {
+		w.Header().Add("Vary", "Accept-Encoding")
+	}
+	return selected, coding
+}
+
+func acceptsEncoding(r *http.Request, coding string) bool {
+	for _, value := range r.Header.Values("Accept-Encoding") {
+		for part := range strings.SplitSeq(value, ",") {
+			name, params, _ := strings.Cut(part, ";")
+			if !strings.EqualFold(strings.TrimSpace(name), coding) {
+				continue
+			}
+			weight, hasWeight := strings.CutPrefix(strings.TrimSpace(params), "q=")
+			if !hasWeight {
+				return true
+			}
+			q, err := strconv.ParseFloat(weight, 64)
+			return err == nil && q > 0
+		}
+	}
+	return false
 }
 
 func shouldSkipFrontendStatic(requestPath string) bool {

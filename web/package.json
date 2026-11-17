@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "release": "vite build --mode release --outDir=../server/frontend/dist --emptyOutDir",
+    "release": "vite build --mode release --outDir=../server/frontend/dist --emptyOutDir && node scripts/precompress-dist.mjs ../server/frontend/dist",
     "lint": "tsc --noEmit --skipLibCheck && biome check src tests",
     "lint:fix": "biome check --write src tests",
     "format": "biome format --write src tests",
