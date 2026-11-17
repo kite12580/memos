@@ -1,7 +1,7 @@
 import { lineTable, sourceRange } from "@usememos/editor";
 import { parseMemoAst, visitWithSource } from "@/lib/memo-ast";
 import type { Attachment } from "@/types/proto/api/attachment_service_pb";
-import { getAttachmentMotionGroupId, getAttachmentUrl, isImage } from "@/utils/attachment";
+import { getAttachmentMotionGroupId, getAttachmentThumbnailUrl, getAttachmentUrl, isImage } from "@/utils/attachment";
 
 const ATTACHMENT_NAME_PREFIX = "attachments/";
 const MANAGED_ATTACHMENT_PATH_PREFIX = "/file/attachments/";
@@ -225,10 +225,20 @@ export const filterInlineManagedAttachments = (content: string, attachments: Att
   );
 };
 
+// Thumbnails are JPEG, so only a JPEG loses nothing by showing one; a PNG or WebP would lose its transparency.
+const getInlineImageUrl = (attachment: Attachment): string =>
+  attachment.type === "image/jpeg" || attachment.type === "image/jpg"
+    ? getAttachmentThumbnailUrl(attachment)
+    : getAttachmentUrl(attachment);
+
 export const resolveManagedAttachmentImageSource = (source: string | undefined, attachments: Attachment[]): string | undefined => {
   if (!source) return source;
   const uid = parseManagedAttachmentImageURL(source);
   if (!uid) return source;
   const attachment = attachments.find((candidate) => extractAttachmentUIDFromName(candidate.name) === uid);
-  return attachment ? getAttachmentUrl(attachment) : source;
+  return attachment ? getInlineImageUrl(attachment) : source;
 };
+
+/** The attachment an inline image shows, from the `src` that `resolveManagedAttachmentImageSource` gave it. */
+export const findInlineImageAttachment = (src: string, attachments: readonly Attachment[]): Attachment | undefined =>
+  attachments.find((attachment) => getInlineImageUrl(attachment) === src);

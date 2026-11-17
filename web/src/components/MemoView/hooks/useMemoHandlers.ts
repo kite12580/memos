@@ -1,15 +1,18 @@
 import { useCallback } from "react";
 import { useDevicePreferences } from "@/hooks/useDevicePreferences";
-import type { PreviewMediaItem } from "@/utils/media-item";
+import type { Attachment } from "@/types/proto/api/attachment_service_pb";
+import { findInlineImageAttachment } from "@/utils/managed-attachment";
+import { buildAttachmentVisualItems, type PreviewMediaItem } from "@/utils/media-item";
 
 interface UseMemoHandlersOptions {
   readonly: boolean;
+  attachments: Attachment[];
   openEditor: () => void;
   openPreview: (items: string | string[] | PreviewMediaItem[], index?: number) => void;
 }
 
 export const useMemoHandlers = (options: UseMemoHandlersOptions) => {
-  const { readonly, openEditor, openPreview } = options;
+  const { readonly, attachments, openEditor, openPreview } = options;
   const { doubleClickEdit } = useDevicePreferences();
 
   const handleMemoContentClick = useCallback(
@@ -19,10 +22,14 @@ export const useMemoHandlers = (options: UseMemoHandlersOptions) => {
         const linkElement = targetEl.closest("a");
         if (linkElement) return; // If image is inside a link, don't show preview
         const imgUrl = targetEl.getAttribute("src");
-        if (imgUrl) openPreview(imgUrl);
+        if (!imgUrl) return;
+        const attachment = findInlineImageAttachment(imgUrl, attachments);
+        const item =
+          attachment && buildAttachmentVisualItems(attachments).find((visual) => visual.attachmentNames.includes(attachment.name));
+        openPreview(item ? [item.previewItem] : imgUrl);
       }
     },
-    [openPreview],
+    [attachments, openPreview],
   );
 
   const handleMemoContentDoubleClick = useCallback(

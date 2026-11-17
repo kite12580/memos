@@ -5,6 +5,7 @@ import {
   buildManagedAttachmentMarkdown,
   extractManagedAttachmentUIDs,
   filterInlineManagedAttachments,
+  findInlineImageAttachment,
   findInvalidManagedAttachmentReferences,
   parseManagedAttachmentImageURL,
   removeManagedAttachmentReferences,
@@ -181,5 +182,18 @@ describe("managed attachment Markdown", () => {
     const shared = attachment("attachments/shared", "shared.png", `${window.location.origin}/file/attachments/shared?share_token=abc`);
     expect(resolveManagedAttachmentImageSource("/file/attachments/shared", [shared])).toBe(shared.externalLink);
     expect(resolveManagedAttachmentImageSource("https://example.com/image.png", [shared])).toBe("https://example.com/image.png");
+  });
+
+  it("shows inline photos as thumbnails and keeps other images whole", () => {
+    const photo = create(AttachmentSchema, { name: "attachments/photo", filename: "IMG 1.jpeg", type: "image/jpeg" });
+    const graphic = attachment("attachments/graphic", "logo.png");
+    const photoThumbnail = `${window.location.origin}/file/attachments/photo/IMG%201.jpeg?thumbnail=true`;
+    const graphicSource = `${window.location.origin}/file/attachments/graphic/logo.png`;
+
+    expect(resolveManagedAttachmentImageSource("/file/attachments/photo", [photo, graphic])).toBe(photoThumbnail);
+    expect(resolveManagedAttachmentImageSource("/file/attachments/graphic", [photo, graphic])).toBe(graphicSource);
+    expect(findInlineImageAttachment(photoThumbnail, [photo, graphic])).toBe(photo);
+    expect(findInlineImageAttachment(graphicSource, [photo, graphic])).toBe(graphic);
+    expect(findInlineImageAttachment("https://example.com/a.jpeg", [photo, graphic])).toBeUndefined();
   });
 });

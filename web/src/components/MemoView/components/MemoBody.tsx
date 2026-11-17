@@ -44,7 +44,12 @@ const MemoBody: React.FC<MemoBodyProps> = ({ compact, showCreator }) => {
     toggleBlurVisibility,
   } = useMemoViewContext();
 
-  const { handleMemoContentClick, handleMemoContentDoubleClick } = useMemoHandlers({ readonly, openEditor, openPreview });
+  const { handleMemoContentClick, handleMemoContentDoubleClick } = useMemoHandlers({
+    readonly,
+    attachments: memo.attachments,
+    openEditor,
+    openPreview,
+  });
 
   const referencedMemos = memo.relations.filter(isReferenceRelation);
   const hasText = memo.content.trim() !== "";
