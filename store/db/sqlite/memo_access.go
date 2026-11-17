@@ -36,10 +36,13 @@ func sqliteMemoAccessPredicate(access *store.MemoAccessScope, memoAlias, memberA
 		" AND EXISTS (SELECT 1 FROM `user` AS `valid_creator` WHERE `valid_creator`.`id` = " + memoAlias + ".`creator_id` AND `valid_creator`.`row_status` IN ('NORMAL', 'ARCHIVED'))" +
 		" AND (" + memoAlias + ".`visibility` <> 'SPACE' OR (" + memoAlias + ".`space_id` IS NOT NULL" +
 		" AND EXISTS (SELECT 1 FROM `space` AS `valid_space` WHERE `valid_space`.`id` = " + memoAlias + ".`space_id`))))"
-	validState := memoAlias + ".`row_status` = 'NORMAL'"
+	// The unary + keeps SQLite from reading the memo list indexes by row_status,
+	// which matches nearly every memo, instead of looking up the memos a query
+	// names by ID.
+	validState := "+" + memoAlias + ".`row_status` = 'NORMAL'"
 	if access.UserID != nil {
 		*args = append(*args, *access.UserID)
-		validState = fmt.Sprintf("(%s.`row_status` = 'NORMAL' OR (%s.`row_status` = 'ARCHIVED' AND %s.`creator_id` = ?))", memoAlias, memoAlias, memoAlias)
+		validState = fmt.Sprintf("(+%s.`row_status` = 'NORMAL' OR (+%s.`row_status` = 'ARCHIVED' AND %s.`creator_id` = ?))", memoAlias, memoAlias, memoAlias)
 	}
 	return "(" + strings.Join(clauses, " OR ") + ") AND " + validMemo + " AND " + validState
 }

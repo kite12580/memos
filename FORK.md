@@ -47,6 +47,12 @@ full rows. Upstream edits to the field list, `WHERE` clauses or `ORDER BY` must
 be applied to the right half: filters and ordering go in `pageQuery`, selected
 columns in `fields`, and the outer `ORDER BY` uses `page.` columns.
 
+**SQLite access predicate looks memos up by ID** — `store/db/sqlite/memo_access.go`
+(the unary `+` on `row_status` in `validState`). Without it SQLite reads
+`idx_memo_list_*` by `row_status` for queries that name more than about ten
+memo IDs, such as related memos and comments in a list. Keep the `+` if
+upstream edits the predicate.
+
 **User stats read in one query** — `server/api/user_service_stats.go`.
 `GetUserStats` and `ListUserStats` call `ListMemos` once instead of paging by
 1,000 with `OFFSET`. Conflicts here are usually upstream edits inside the
