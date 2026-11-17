@@ -99,72 +99,59 @@ func (s *APIService) ListUserStats(ctx context.Context, request *apipb.ListUserS
 
 	userMemoStatMap := make(map[int32]*apipb.UserStats)
 	pinnedMemoUIDsByUserID := make(map[int32][]string)
-	limit := 1000
-	offset := 0
-	memoFind.Limit = &limit
-	memoFind.Offset = &offset
-
-	for {
-		memos, err := s.Store.ListMemos(ctx, memoFind)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to list memos: %v", err)
+	memos, err := s.Store.ListMemos(ctx, memoFind)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list memos: %v", err)
+	}
+	for _, memo := range memos {
+		// Initialize user stats if not exists
+		if _, exists := userMemoStatMap[memo.CreatorID]; !exists {
+			userMemoStatMap[memo.CreatorID] = &apipb.UserStats{
+				Name:                  "",
+				TagCounts:             make(map[string]int32),
+				MemoCreatedTimestamps: []*timestamppb.Timestamp{},
+				MemoUpdatedTimestamps: []*timestamppb.Timestamp{},
+				PinnedMemos:           []string{},
+				MemoTypeStats: &apipb.UserStats_MemoTypeStats{
+					LinkCount: 0,
+					CodeCount: 0,
+					TodoCount: 0,
+					UndoCount: 0,
+				},
+			}
 		}
-		if len(memos) == 0 {
-			break
-		}
 
-		for _, memo := range memos {
-			// Initialize user stats if not exists
-			if _, exists := userMemoStatMap[memo.CreatorID]; !exists {
-				userMemoStatMap[memo.CreatorID] = &apipb.UserStats{
-					Name:                  "",
-					TagCounts:             make(map[string]int32),
-					MemoCreatedTimestamps: []*timestamppb.Timestamp{},
-					MemoUpdatedTimestamps: []*timestamppb.Timestamp{},
-					PinnedMemos:           []string{},
-					MemoTypeStats: &apipb.UserStats_MemoTypeStats{
-						LinkCount: 0,
-						CodeCount: 0,
-						TodoCount: 0,
-						UndoCount: 0,
-					},
+		stats := userMemoStatMap[memo.CreatorID]
+
+		stats.MemoCreatedTimestamps = append(stats.MemoCreatedTimestamps, timestamppb.New(time.Unix(memo.CreatedTs, 0)))
+		stats.MemoUpdatedTimestamps = append(stats.MemoUpdatedTimestamps, timestamppb.New(time.Unix(memo.UpdatedTs, 0)))
+
+		// Count memo stats
+		stats.TotalMemoCount++
+
+		// Count tags and other properties
+		if memo.Payload != nil {
+			incrementTagCounts(stats.TagCounts, memo.Payload.Tags)
+			if memo.Payload.Property != nil {
+				if memo.Payload.Property.HasLink {
+					stats.MemoTypeStats.LinkCount++
+				}
+				if memo.Payload.Property.HasCode {
+					stats.MemoTypeStats.CodeCount++
+				}
+				if memo.Payload.Property.HasTaskList {
+					stats.MemoTypeStats.TodoCount++
+				}
+				if memo.Payload.Property.HasIncompleteTasks {
+					stats.MemoTypeStats.UndoCount++
 				}
 			}
-
-			stats := userMemoStatMap[memo.CreatorID]
-
-			stats.MemoCreatedTimestamps = append(stats.MemoCreatedTimestamps, timestamppb.New(time.Unix(memo.CreatedTs, 0)))
-			stats.MemoUpdatedTimestamps = append(stats.MemoUpdatedTimestamps, timestamppb.New(time.Unix(memo.UpdatedTs, 0)))
-
-			// Count memo stats
-			stats.TotalMemoCount++
-
-			// Count tags and other properties
-			if memo.Payload != nil {
-				incrementTagCounts(stats.TagCounts, memo.Payload.Tags)
-				if memo.Payload.Property != nil {
-					if memo.Payload.Property.HasLink {
-						stats.MemoTypeStats.LinkCount++
-					}
-					if memo.Payload.Property.HasCode {
-						stats.MemoTypeStats.CodeCount++
-					}
-					if memo.Payload.Property.HasTaskList {
-						stats.MemoTypeStats.TodoCount++
-					}
-					if memo.Payload.Property.HasIncompleteTasks {
-						stats.MemoTypeStats.UndoCount++
-					}
-				}
-			}
-
-			// Track pinned memos
-			if memo.Pinned {
-				pinnedMemoUIDsByUserID[memo.CreatorID] = append(pinnedMemoUIDsByUserID[memo.CreatorID], memo.UID)
-			}
 		}
 
-		offset += limit
+		// Track pinned memos
+		if memo.Pinned {
+			pinnedMemoUIDsByUserID[memo.CreatorID] = append(pinnedMemoUIDsByUserID[memo.CreatorID], memo.UID)
+		}
 	}
 
 	userMemoStats := []*apipb.UserStats{}
@@ -235,51 +222,36 @@ func (s *APIService) GetUserStats(ctx context.Context, request *apipb.GetUserSta
 	todoCount := int32(0)
 	undoCount := int32(0)
 	pinnedMemos := []string{}
-	totalMemoCount := int32(0)
 
-	limit := 1000
-	offset := 0
-	memoFind.Limit = &limit
-	memoFind.Offset = &offset
+	memos, err := s.Store.ListMemos(ctx, memoFind)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list memos: %v", err)
+	}
 
-	for {
-		memos, err := s.Store.ListMemos(ctx, memoFind)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to list memos: %v", err)
-		}
-		if len(memos) == 0 {
-			break
-		}
-
-		totalMemoCount += int32(len(memos))
-
-		for _, memo := range memos {
-			createdTimestamps = append(createdTimestamps, timestamppb.New(time.Unix(memo.CreatedTs, 0)))
-			updatedTimestamps = append(updatedTimestamps, timestamppb.New(time.Unix(memo.UpdatedTs, 0)))
-			// Count different memo types based on content.
-			if memo.Payload != nil {
-				incrementTagCounts(tagCount, memo.Payload.Tags)
-				if memo.Payload.Property != nil {
-					if memo.Payload.Property.HasLink {
-						linkCount++
-					}
-					if memo.Payload.Property.HasCode {
-						codeCount++
-					}
-					if memo.Payload.Property.HasTaskList {
-						todoCount++
-					}
-					if memo.Payload.Property.HasIncompleteTasks {
-						undoCount++
-					}
+	for _, memo := range memos {
+		createdTimestamps = append(createdTimestamps, timestamppb.New(time.Unix(memo.CreatedTs, 0)))
+		updatedTimestamps = append(updatedTimestamps, timestamppb.New(time.Unix(memo.UpdatedTs, 0)))
+		// Count different memo types based on content.
+		if memo.Payload != nil {
+			incrementTagCounts(tagCount, memo.Payload.Tags)
+			if memo.Payload.Property != nil {
+				if memo.Payload.Property.HasLink {
+					linkCount++
+				}
+				if memo.Payload.Property.HasCode {
+					codeCount++
+				}
+				if memo.Payload.Property.HasTaskList {
+					todoCount++
+				}
+				if memo.Payload.Property.HasIncompleteTasks {
+					undoCount++
 				}
 			}
-			if memo.Pinned {
-				pinnedMemos = append(pinnedMemos, MemoNamePrefix+memo.UID)
-			}
 		}
-
-		offset += limit
+		if memo.Pinned {
+			pinnedMemos = append(pinnedMemos, MemoNamePrefix+memo.UID)
+		}
 	}
 
 	userStats := &apipb.UserStats{
@@ -288,7 +260,7 @@ func (s *APIService) GetUserStats(ctx context.Context, request *apipb.GetUserSta
 		MemoUpdatedTimestamps: updatedTimestamps,
 		TagCounts:             tagCount,
 		PinnedMemos:           pinnedMemos,
-		TotalMemoCount:        totalMemoCount,
+		TotalMemoCount:        int32(len(memos)),
 		MemoTypeStats: &apipb.UserStats_MemoTypeStats{
 			LinkCount: linkCount,
 			CodeCount: codeCount,
