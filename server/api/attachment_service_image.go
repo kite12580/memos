@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/usememos/memos/internal/imagelimit"
+	"github.com/usememos/memos/internal/jpegmeta"
 	apipb "github.com/usememos/memos/proto/gen/api"
 	storepb "github.com/usememos/memos/proto/gen/store"
 )
@@ -84,16 +85,18 @@ func validateImageReaderPixelCount(reader io.Reader) error {
 	return imagelimit.CheckReader(reader)
 }
 
-// stripImageExif removes EXIF metadata from image files by decoding and re-encoding them.
+// stripImageExif removes EXIF metadata from image files.
 // This prevents exposure of sensitive metadata such as GPS location, camera details, and timestamps.
 //
-// The function preserves the correct image orientation by applying EXIF orientation tags
-// during decoding before stripping all metadata. Images are re-encoded with high quality
-// to minimize visual degradation. The re-encoded output is returned in memory; its size
-// is bounded by imagelimit.MaxPixels, which the decoder already has to hold.
+// JPEGs keep their compressed image data: jpegmeta.Strip drops the metadata
+// segments and keeps only a non-default orientation tag, so the image still
+// displays upright. Other images, and JPEGs it cannot parse, are decoded with
+// their EXIF orientation applied and re-encoded. The output is returned in
+// memory; its size is bounded by imagelimit.MaxPixels, which the decoder
+// already has to hold.
 //
 // Supported formats:
-//   - JPEG/JPG: Re-encoded as JPEG with quality 95
+//   - JPEG/JPG: Metadata segments removed, image data unchanged
 //   - PNG: Re-encoded as PNG (lossless)
 //   - TIFF/WebP/HEIC/HEIF: Re-encoded as JPEG with quality 95
 //
@@ -104,6 +107,15 @@ func stripImageExif(source io.ReadSeeker, mimeType string) ([]byte, error) {
 	}
 	if err := validateImageReaderPixelCount(source); err != nil {
 		return nil, err
+	}
+	if mimeType != "image/png" {
+		if _, err := source.Seek(0, io.SeekStart); err != nil {
+			return nil, errors.Wrap(err, "failed to rewind image")
+		}
+		var buf bytes.Buffer
+		if err := jpegmeta.Strip(source, &buf); err == nil {
+			return buf.Bytes(), nil
+		}
 	}
 	if _, err := source.Seek(0, io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "failed to rewind image")

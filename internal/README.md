@@ -11,6 +11,7 @@ nothing from `store`, `core`, `server`, `provider`, `markdown`, `filter`, or
 | `email/` | SMTP client, config, and message types |
 | `httphandler/` | HTTP response errors, panic recovery, and routing compatibility |
 | `identifier/` | grammar of UIDs and usernames shared by parser, store, and API |
+| `jpegmeta/` | JPEG EXIF orientation and lossless metadata stripping |
 | `linkmeta/` | HTML metadata, oEmbed, and image fetching for link previews |
 | `motionphoto/` | Live Photo and Motion Photo container parsing |
 | `profile/` | process configuration parsed from flags and environment |
