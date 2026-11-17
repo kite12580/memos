@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { getRequestToken, refreshAccessToken } from "@/connect";
 import { useAuth } from "@/contexts/AuthContext";
 import { attachmentKeys } from "@/hooks/useAttachmentQueries";
@@ -15,6 +15,7 @@ const MAX_RETRY_DELAY_MS = 30000;
 const RETRY_BACKOFF_MULTIPLIER = 2;
 const STABLE_CONNECTION_THRESHOLD_MS = 60_000;
 const HIDDEN_DISCONNECT_DELAY_MS = 30_000;
+const MEMO_CHANGE_COALESCE_MS = 250;
 
 const SSE_CONNECTION_LOCK_NAME = "memos-sse-connection";
 const SSE_SYNC_CHANNEL_NAME = "memos-sse-sync";
@@ -83,13 +84,13 @@ export function useLiveMemoRefresh() {
   const hasConnectedOnceRef = useRef(false);
 
   const currentUserName = currentUser?.name;
-  const handleEvent = useCallback((event: SSEChangeEvent) => handleSSEEvent(event, queryClient), [queryClient]);
 
   useEffect(() => {
     let mounted = true;
     let isLeader = false;
     let leadershipAbortController: AbortController | null = null;
     let hiddenDisconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let memoChangeTimeout: ReturnType<typeof setTimeout> | null = null;
     const channel = createSSESyncChannel();
     const channelClientID = createSSEChannelClientID();
 
@@ -105,6 +106,30 @@ export function useLiveMemoRefresh() {
     const publishStatus = (status: SSEConnectionStatus) => {
       setSSEStatus(status);
       postSyncMessage({ kind: "status", status });
+    };
+
+    const clearMemoChangeTimeout = () => {
+      if (memoChangeTimeout) {
+        clearTimeout(memoChangeTimeout);
+        memoChangeTimeout = null;
+      }
+    };
+
+    // A burst of memo changes, such as a save that also updates attachments and
+    // relations, refetches the live views once.
+    const handleEvent = (event: SSEChangeEvent) => {
+      switch (event.type) {
+        case MEMO_CHANGED_SSE_EVENT_TYPE:
+          memoChangeTimeout ??= setTimeout(() => {
+            memoChangeTimeout = null;
+            invalidateLiveMemoQueries(queryClient);
+          }, MEMO_CHANGE_COALESCE_MS);
+          break;
+        case SPACE_CHANGED_SSE_EVENT_TYPE:
+          clearMemoChangeTimeout();
+          invalidateAllLiveQueries(queryClient);
+          break;
+      }
     };
 
     const publishEvent = (event: SSEChangeEvent) => {
@@ -302,6 +327,11 @@ export function useLiveMemoRefresh() {
     if (!currentUserName) {
       setSSEStatus("disconnected");
     } else {
+      // Once the stream has connected, every reconnect resyncs these queries, so a
+      // focus refetch would only repeat it.
+      for (const queryKey of liveQueryKeys()) {
+        queryClient.setQueryDefaults(queryKey, { refetchOnWindowFocus: () => !hasConnectedOnceRef.current });
+      }
       reconcilePageState();
     }
 
@@ -309,7 +339,11 @@ export function useLiveMemoRefresh() {
       mounted = false;
       setSSEStatus("disconnected");
       retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+      for (const queryKey of liveQueryKeys()) {
+        queryClient.setQueryDefaults(queryKey, {});
+      }
       clearHiddenDisconnectTimeout();
+      clearMemoChangeTimeout();
       stopLeadership();
       channel?.removeEventListener("message", handleSyncMessage);
       channel?.close();
@@ -319,7 +353,7 @@ export function useLiveMemoRefresh() {
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("pageshow", handlePageShow);
     };
-  }, [handleEvent, currentUserName]);
+  }, [queryClient, currentUserName]);
 }
 
 // ---------------------------------------------------------------------------
@@ -459,15 +493,8 @@ async function consumeSSEStream(body: ReadableStream<Uint8Array>, signal: AbortS
   }
 }
 
-function handleSSEEvent(event: SSEChangeEvent, queryClient: ReturnType<typeof useQueryClient>) {
-  switch (event.type) {
-    case MEMO_CHANGED_SSE_EVENT_TYPE:
-      invalidateLiveMemoQueries(queryClient);
-      break;
-    case SPACE_CHANGED_SSE_EVENT_TYPE:
-      invalidateAllLiveQueries(queryClient);
-      break;
-  }
+function liveQueryKeys() {
+  return [spaceKeys.all, userKeys.notifications(), memoKeys.all, userKeys.stats(), attachmentKeys.lists()];
 }
 
 function invalidateAllLiveQueries(queryClient: ReturnType<typeof useQueryClient>) {

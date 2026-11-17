@@ -235,7 +235,7 @@ describe("useLiveMemoRefresh", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     act(() => {
-      streamControllers[0].enqueue(new TextEncoder().encode('data: {"type":"memo.changed"}\n\n'));
+      streamControllers[0].enqueue(new TextEncoder().encode('data: {"type":"memo.changed"}\n\ndata: {"type":"memo.changed"}\n\n'));
     });
 
     await waitFor(() => {
@@ -246,6 +246,9 @@ describe("useLiveMemoRefresh", () => {
       expect(firstInvalidate).toHaveBeenCalledWith({ queryKey: ["attachments", "list"], refetchType: "active" });
       expect(secondInvalidate).toHaveBeenCalledWith({ queryKey: ["attachments", "list"], refetchType: "active" });
     });
+    for (const invalidate of [firstInvalidate, secondInvalidate]) {
+      expect(invalidate.mock.calls.filter(([filters]) => filters?.queryKey?.[0] === "memos")).toHaveLength(1);
+    }
     expect(firstInvalidate).not.toHaveBeenCalledWith({ queryKey: ["spaces"], refetchType: "active" });
     expect(secondInvalidate).not.toHaveBeenCalledWith({ queryKey: ["spaces"], refetchType: "active" });
 

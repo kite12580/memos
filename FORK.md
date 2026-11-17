@@ -99,6 +99,14 @@ the `openPicker` helpers in `web/tests/reaction-selector.test.tsx` and
 `web/tests/reaction-picker-window.test.tsx`. New code must import `@/lib/emoji`
 through the hook, not directly, or the catalog returns to the memo list chunk.
 
+**Fewer live-refresh refetches** — `web/src/hooks/useLiveMemoRefresh.ts`
+(`handleEvent` coalesces `memo.changed` for 250 ms; `liveQueryKeys` get a
+`refetchOnWindowFocus` default that is off once the stream has connected),
+`web/src/hooks/useMemoQueries.ts` (`memoKeys.linkMetadata` is outside the
+`memos` root, so memo events do not refetch link previews),
+`web/tests/live-memo-refresh.test.tsx`. If upstream adds a key to
+`invalidateAllLiveQueries`, add it to `liveQueryKeys` too.
+
 ## CI
 
 **Fork image** — `.github/workflows/fork-image.yml`. Builds the frontend and

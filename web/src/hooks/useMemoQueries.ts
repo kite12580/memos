@@ -30,7 +30,7 @@ export const memoKeys = {
   details: () => [...memoKeys.all, "detail"] as const,
   detail: (name: string) => [...memoKeys.details(), name] as const,
   comments: (name: string) => [...memoKeys.all, "comments", name] as const,
-  linkMetadata: (url: string) => [...memoKeys.all, "linkMetadata", url] as const,
+  linkMetadata: (url: string) => ["linkMetadata", url] as const,
 };
 
 export const memoDetailQueryOptions = (name: string) =>
