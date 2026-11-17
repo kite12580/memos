@@ -1072,6 +1072,22 @@ func TestServeAttachmentFile_RefreshCookieAuthenticatesOwner(t *testing.T) {
 	e.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "secret content", rec.Body.String())
+	require.Equal(t, readableAttachmentCacheControl, rec.Header().Get("Cache-Control"))
+
+	// The kept copy is revalidated: the owner gets 304, a signed-out browser 401.
+	etag := rec.Header().Get("ETag")
+	req = httptest.NewRequest(http.MethodGet, url, nil)
+	req.AddCookie(&http.Cookie{Name: auth.RefreshTokenCookieName, Value: refreshToken})
+	req.Header.Set("If-None-Match", etag)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNotModified, rec.Code)
+	req = httptest.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("If-None-Match", etag)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Equal(t, privateAttachmentCacheControl, rec.Header().Get("Cache-Control"))
 }
 
 // TestServeAttachmentFile_UnlinkedAttachmentOwnerOrAdmin verifies an

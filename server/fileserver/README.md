@@ -40,7 +40,7 @@ the server injects as `MemoExporter`; without it the route answers `404`.
 - **Thumbnails** are generated at max 600px, cached in `{data_dir}/.thumbnail_cache/`, with a semaphore capping concurrent generation at the lesser of 3 and `GOMAXPROCS`. Images with HDR/wide-gamut metadata are served as originals, since re-encoding would strip it.
 - **Motion photos** have their embedded video extracted and cached in `{data_dir}/.motion_cache/`.
 - **XSS prevention**: script-capable MIME types are rewritten to `application/octet-stream`, non-media files get `Content-Disposition: attachment`, and all responses carry `X-Content-Type-Options: nosniff` plus a restrictive `Content-Security-Policy`.
-- **Caching**: public attachments and their thumbnails get `public, no-cache`; private ones `private, no-store`. Attachments carry an `ETag` of UID, update time and size, and a matching `If-None-Match` gets `304 Not Modified` after the access check, before any content is read.
+- **Caching**: public attachments and their thumbnails get `public, no-cache`; other attachments the viewer may read get `private, no-cache`, and denied requests `private, no-store`. Attachments carry an `ETag` of UID, update time and size, and a matching `If-None-Match` gets `304 Not Modified` after the access check, before any content is read.
 
 ## Testing
 

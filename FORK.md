@@ -46,7 +46,10 @@ Hosts under `localhost`, `local`, `home.arpa` and `internal` fail before DNS.
 `ExcludeContent` in `checkAttachmentPermission`), `server/fileserver/README.md`,
 `server/fileserver/fileserver_test.go`. The check must stay after
 `checkAttachmentPermission`, so a 304 never answers a request that would be
-denied.
+denied. Readable private attachments get `private, no-cache`
+(`readableAttachmentCacheControl`) instead of upstream's `private, no-store`,
+so browsers keep them on disk and revalidate each use; denied responses and
+memo exports stay `no-store`.
 
 **SQLite memo list sorts narrow rows** — `store/db/sqlite/memo.go` (`ListMemos`).
 The query picks the page in a subquery over id and sort keys, then joins the

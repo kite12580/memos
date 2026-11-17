@@ -64,6 +64,10 @@ const (
 
 	publicAttachmentCacheControl  = "public, no-cache"
 	privateAttachmentCacheControl = "private, no-store"
+	// readableAttachmentCacheControl lets the browser keep an attachment the
+	// viewer may read, and revalidate it on every use, so access is checked
+	// again before a kept copy is shown.
+	readableAttachmentCacheControl = "private, no-cache"
 )
 
 // xssUnsafeTypes contains MIME types that could execute scripts if served directly.
@@ -177,6 +181,8 @@ func (s *FileServerService) serveAttachmentFile(w http.ResponseWriter, r *http.R
 	}
 	if readClass == access.MemoReadClassPublic {
 		w.Header().Set("Cache-Control", publicAttachmentCacheControl)
+	} else {
+		w.Header().Set("Cache-Control", readableAttachmentCacheControl)
 	}
 	// External attachments carry no blob; their reference is the upstream URL
 	// the content lives at, so they are answered with a redirect.
