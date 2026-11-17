@@ -181,6 +181,12 @@ root must be added to `MEMO_QUERY_ROOTS`, as before.
 `web/src/lib/memo-markdown.ts` (`cachedMentionUsernames`). Callers share the
 cached arrays and sets, so they must not mutate them.
 
+**UI library and icons in shared chunks** — `web/vite.config.mts` (the `ui-vendor`
+and `icons` code-splitting groups). Without them the lazy settings sections and
+emoji catalog split `@base-ui/react` and `lucide-react` into dozens of tiny
+shared chunks, and a cold load over HTTP/1.1 fetched 109 scripts before the
+first memo. Keep the groups if upstream edits the build config.
+
 ## CI
 
 **Fork image** — `.github/workflows/fork-image.yml`. Builds the frontend and

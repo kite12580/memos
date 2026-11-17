@@ -55,6 +55,14 @@ export default defineConfig({
               name: "leaflet-vendor",
               test: /node_modules[\\/]leaflet([\\/]|$)/,
             },
+            {
+              name: "ui-vendor",
+              test: /node_modules[\\/](@base-ui[\\/]react|@usememos[\\/]ui|@floating-ui|tabbable|reselect|use-sync-external-store)([\\/]|$)/,
+            },
+            {
+              name: "icons",
+              test: /node_modules[\\/]lucide-react([\\/]|$)/,
+            },
           ],
         },
       },
