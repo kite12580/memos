@@ -67,6 +67,8 @@ CREATE TABLE `memo` (
 
 CREATE INDEX `idx_memo_space_id` ON `memo`(`space_id`, `row_status`, `created_ts`, `id`);
 CREATE INDEX `idx_memo_creator_id` ON `memo`(`creator_id`);
+CREATE INDEX `idx_memo_list_created` ON `memo`(`row_status`, `created_ts`, `id`);
+CREATE INDEX `idx_memo_list_pinned_created` ON `memo`(`row_status`, `pinned`, `created_ts`, `id`);
 
 -- memo_relation
 CREATE TABLE `memo_relation` (

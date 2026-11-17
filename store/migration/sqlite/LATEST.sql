@@ -68,6 +68,9 @@ CREATE TABLE memo (
 
 CREATE INDEX idx_memo_creator_id ON memo(creator_id);
 CREATE INDEX idx_memo_space_id ON memo(space_id, row_status, created_ts DESC, id DESC);
+-- The trailing columns cover the list predicates, so a page is chosen without reading memo rows.
+CREATE INDEX idx_memo_list_created ON memo(row_status, created_ts DESC, id DESC, creator_id, visibility, space_id, pinned, updated_ts);
+CREATE INDEX idx_memo_list_pinned_created ON memo(row_status, pinned DESC, created_ts DESC, id DESC, creator_id, visibility, space_id, updated_ts);
 
 -- memo_relation
 CREATE TABLE memo_relation (

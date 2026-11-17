@@ -23,6 +23,7 @@ Memos is a self-hosted note-taking app.
 
 ## Documentation
 
+- This is the `selfhost` fork: [`FORK.md`](FORK.md) lists every change from upstream. Update it with each fork change, and read it before merging upstream.
 - ADRs and their companion glossary have been retired. Do not recreate them unless explicitly requested.
 - Design documents in `docs/design/` stay editable until the feature ships in a tagged release; keep a merged-but-unreleased design in step
   with its implementation. After release the body is frozen: record later design changes in a dated `## Amendments` section at the end, never by
