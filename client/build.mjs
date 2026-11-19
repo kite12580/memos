@@ -51,6 +51,67 @@ const boot = bootPath.split("/").pop();
 // The chunks boot imports statically, so pages can preload them alongside it.
 const preload = bootOutput.imports.filter((i) => i.kind === "import-statement").map((i) => `assets/${i.path.split("/").pop()}`);
 
+// The UI package ships every component's styles. Rules whose selectors only name `mu-` classes no
+// source mentions are dropped; a class built at runtime (`mu-toast-${type}`) keeps its whole prefix.
+function pruneUiStyles() {
+  const css = readFileSync(join(root, "node_modules/@usememos/ui/dist/styles.css"), "utf8");
+  const sources = [
+    ...readdirSync(join(root, "../server/templates"), { recursive: true }).filter((f) => f.endsWith(".html")).map((f) => join(root, "../server/templates", f)),
+    ...readdirSync(join(root, "../server/src"), { recursive: true }).filter((f) => f.endsWith(".rs")).map((f) => join(root, "../server/src", f)),
+    ...readdirSync(join(root, "src"), { recursive: true }).filter((f) => f.endsWith(".ts") || f.endsWith(".css")).map((f) => join(root, "src", f)),
+  ].map((f) => readFileSync(f, "utf8")).join("\n");
+  const used = new Set(sources.match(/mu-[a-z0-9-]+/g));
+  const prefixes = [...sources.matchAll(/(mu-[a-z0-9-]*-)\$\{/g)].map((m) => m[1]);
+  const known = (cls) => used.has(cls) || prefixes.some((p) => cls.startsWith(p));
+  const keepSelector = (sel) => sel.split(",").some((one) => (one.match(/\.mu-[a-z0-9-]+/g) ?? []).every((c) => known(c.slice(1))));
+  let i = 0;
+  const block = (depth) => {
+    let text = "";
+    while (i < css.length) {
+      while (/\s/.test(css[i] ?? "")) i++;
+      if (i >= css.length) break;
+      if (css[i] === "}") {
+        i++;
+        return text;
+      }
+      const open = css.indexOf("{", i);
+      const close = css.indexOf("}", i);
+      if (open === -1 || close < open) {
+        text += css.slice(i, close);
+        i = close;
+        continue;
+      }
+      const semi = css.indexOf(";", i);
+      if (css[i] === "@" && semi !== -1 && semi < open) {
+        text += css.slice(i, semi + 1);
+        i = semi + 1;
+        continue;
+      }
+      const head = css.slice(i, open);
+      i = open + 1;
+      if (head.startsWith("@media") || head.startsWith("@supports") || head.startsWith("@layer")) {
+        const inner = block(depth + 1);
+        if (inner) text += `${head}{${inner}}`;
+      } else if (head.startsWith("@")) {
+        const end = css.indexOf("}", i);
+        const inner = head.startsWith("@keyframes") ? block(depth + 1) : css.slice(i, end);
+        if (!head.startsWith("@keyframes")) i = end + 1;
+        text += `${head}{${inner}}`;
+      } else {
+        const end = css.indexOf("}", i);
+        const body = css.slice(i, end);
+        i = end + 1;
+        if (keepSelector(head)) text += `${head}{${body}}`;
+      }
+    }
+    return text;
+  };
+  const out = block(0);
+  mkdirSync(join(root, ".build"), { recursive: true });
+  writeFileSync(join(root, ".build/ui-styles.css"), out);
+}
+pruneUiStyles();
+
 execFileSync(join(root, "node_modules/.bin/tailwindcss"), ["-i", "src/styles/app.css", "-o", "dist/app.css", "--minify"], {
   cwd: root,
   stdio: ["ignore", "ignore", "inherit"],
