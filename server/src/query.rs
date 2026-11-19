@@ -96,12 +96,13 @@ impl Term {
 fn is_date(s: &str) -> bool {
     let parts: Vec<&str> = s.split('-').collect();
     let digits = |p: &str, n: usize| p.len() == n && p.bytes().all(|b| b.is_ascii_digit());
-    match parts.as_slice() {
+    let shape = match parts.as_slice() {
         [y] => digits(y, 4),
         [y, m] => digits(y, 4) && digits(m, 2),
         [y, m, d] => digits(y, 4) && digits(m, 2) && digits(d, 2),
         _ => false,
-    }
+    };
+    shape && period(s, &TimeZone::UTC).is_some()
 }
 
 fn atom(word: &str) -> Atom {
@@ -321,6 +322,13 @@ mod tests {
                 t(false, Atom::Text("before:soon".into())),
                 t(false, Atom::Text("#".into())),
                 t(false, Atom::Text("-".into())),
+            ]
+        );
+        assert_eq!(
+            parse("on:2026-13-45 after:2026-02-30"),
+            vec![
+                t(false, Atom::Text("on:2026-13-45".into())),
+                t(false, Atom::Text("after:2026-02-30".into())),
             ]
         );
         assert_eq!(parse("  "), vec![]);

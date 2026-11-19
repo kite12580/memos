@@ -204,6 +204,7 @@ impl App {
                 .body(self.assets.favicon.clone()),
             (true, _, ["healthz"]) => Response::text(200, "ok"),
             (_, _, ["api", "memos", ..]) => api::handle(self, req).await,
+            (true, _, _) => pages::not_found(self, &req),
             _ => Response::not_found(),
         }
     }

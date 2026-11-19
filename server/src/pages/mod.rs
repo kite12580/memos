@@ -83,6 +83,23 @@ struct MemoPage<'a> {
 }
 
 #[derive(Template)]
+#[template(path = "pages/stub.html")]
+struct StubPage<'a> {
+    c: Ctx<'a>,
+    sb: Sidebar,
+    title: &'static str,
+}
+
+/// The app's own page for a path or memo that does not exist.
+pub fn not_found(app: &App, req: &Request) -> Response {
+    let c = app.ctx(req);
+    let title = c.t.s("error.not-found");
+    let mut res = html(&StubPage { c, sb: Sidebar::default(), title });
+    res.status = 404;
+    res.with("cache-control", "no-store")
+}
+
+#[derive(Template)]
 #[template(source = "{% include \"partials/memo_list.html\" %}", ext = "html")]
 struct ListFragment<'a> {
     c: Ctx<'a>,
@@ -558,7 +575,7 @@ pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
         .await;
     let (all, extras) = match data {
         Ok(Some(d)) => d,
-        Ok(None) => return Response::not_found(),
+        Ok(None) => return not_found(app, req),
         Err(e) => return e.into(),
     };
     let mut cards = cards(&c, &all, &extras, false);
