@@ -119,7 +119,7 @@ export function openMemoMenu(trigger: HTMLElement) {
   const article = articleOf(card);
   const state = (key: string) => article.hasAttribute(`data-${key}`);
   openTemplate(trigger, "tpl-memo-menu", "bottom", "end", (popup) => {
-    popup.dataset.card = card.dataset.card;
+    popup.dataset.for = card.dataset.card;
     for (const item of $$("[data-if]", popup)) {
       const ok = item.dataset.if!.split(" ").every((c) => (c.startsWith("!") ? !state(c.slice(1)) : state(c)));
       if (!ok) item.remove();

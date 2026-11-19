@@ -459,14 +459,26 @@ pub fn latest_comments(c: &Connection, ids: &[i64], per: usize) -> DbResult<Hash
     Ok(out)
 }
 
-/// Tags of non-archived top-level memos with their memo counts, by name.
+/// Tags of non-archived top-level memos with how many memos carry each,
+/// counting a memo under every ancestor of a nested tag, busiest first.
 pub fn tag_counts(c: &Connection) -> DbResult<Vec<(String, i64)>> {
-    Ok(c.prepare_cached(
-        "SELECT t.tag, count(*) FROM memo_tag t JOIN memo m ON m.id = t.memo_id
-         WHERE m.archived = 0 AND m.parent_id IS NULL GROUP BY t.tag ORDER BY t.tag",
-    )?
-    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-    .collect::<rusqlite::Result<_>>()?)
+    let mut st = c.prepare_cached(
+        "SELECT t.tag, t.memo_id FROM memo_tag t JOIN memo m ON m.id = t.memo_id
+         WHERE m.archived = 0 AND m.parent_id IS NULL",
+    )?;
+    let mut memos_by_tag: HashMap<String, std::collections::HashSet<i64>> = HashMap::new();
+    for row in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
+        let (tag, id) = row?;
+        let mut end = 0;
+        for seg in tag.split('/') {
+            end += seg.len();
+            memos_by_tag.entry(tag[..end].to_string()).or_default().insert(id);
+            end += 1;
+        }
+    }
+    let mut out: Vec<(String, i64)> = memos_by_tag.into_iter().map(|(t, ids)| (t, ids.len() as i64)).collect();
+    out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    Ok(out)
 }
 
 /// Creation times of non-archived top-level memos in `[from, to)`.
@@ -558,6 +570,8 @@ mod tests {
             assert_eq!(list(c, &q("-#t1 memo", None, 10))?.0.len(), 3);
             assert_eq!(list(c, &q("is:pinned", None, 10))?.0.len(), 1);
             assert_eq!(tag_counts(c)?, vec![("t0".into(), 3), ("t1".into(), 2)]);
+            create(c, new("#a/b #a/c", 9))?;
+            assert_eq!(tag_counts(c)?[2..], [("a".into(), 1), ("a/b".into(), 1), ("a/c".into(), 1)]);
             Ok(())
         })
         .unwrap();

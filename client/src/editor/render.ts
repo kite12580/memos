@@ -12,16 +12,11 @@ import {
   memoSanitizeHtml,
   memoTagOptions,
   parseMemoMarkdown,
-  type Translate,
 } from "../memos/memo-markdown";
 import { MEMO_MARKDOWN } from "../memos/memo-ast";
 import { headingIds } from "./headings";
 import { post } from "../lib/dom";
-
-let translate: Translate = (k) => k;
-export const setTranslate = (t: Translate) => {
-  translate = t;
-};
+import { ready, t } from "./strings";
 
 /** Loads what the read-only view would otherwise fill in later: code languages and the HTML sanitizer. */
 async function preload(markdown: string) {
@@ -42,8 +37,9 @@ const LIGHT_DARK = /color:\s*light-dark\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)/;
 /** The rendered DOM as stored HTML: no editor ids, checkbox state as attributes, highlight colors as variables. */
 function serialize(root: HTMLElement): string {
   for (const el of root.querySelectorAll("[data-block-id]")) el.removeAttribute("data-block-id");
-  for (const input of root.querySelectorAll<HTMLInputElement>("input.mbe-checkbox")) {
-    input.toggleAttribute("checked", input.checked);
+  for (const input of root.querySelectorAll<HTMLInputElement>("input")) {
+    if (input.type === "checkbox") input.toggleAttribute("checked", input.checked);
+    else if (input.value) input.setAttribute("value", input.value);
   }
   for (const el of root.querySelectorAll<HTMLElement>(".memos-code-token[style]")) {
     const m = LIGHT_DARK.exec(el.getAttribute("style") ?? "");
@@ -54,7 +50,7 @@ function serialize(root: HTMLElement): string {
 
 /** The HTML memos' read-only view draws for `markdown`. */
 export async function renderHTML(markdown: string): Promise<string> {
-  await preload(markdown);
+  await Promise.all([ready, preload(markdown)]);
   const element = document.createElement("div");
   element.style.cssText = "position:absolute;left:-10000px;top:0;width:640px;visibility:hidden";
   element.className = "memo-content-root";
@@ -67,7 +63,7 @@ export async function renderHTML(markdown: string): Promise<string> {
     markdown: MEMO_MARKDOWN,
     extensions: memoExtensions({ tags: memoTagOptions(true) }),
     theme: MEMO_EDITOR_THEME,
-    labels: memoEditorLabels(translate),
+    labels: memoEditorLabels(t),
     resolveUrl: memoResolveUrl,
     referrerPolicy: "no-referrer",
     sanitizeHtml: memoSanitizeHtml,

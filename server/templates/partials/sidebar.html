@@ -26,7 +26,46 @@
 </nav>
 <div class="mx-3 mt-2 border-t border-mu-line/70"></div>
 <div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-3 [scrollbar-width:thin] px-3">
-<div class="flex flex-col gap-3">
+<div class="{% if sb.memo.is_some() %}mu-compact relative w-full select-none flex flex-col gap-3 pb-2{% else %}flex flex-col gap-3{% endif %}">
+{%- if let Some(side) = sb.memo %}
+{%- if !side.outline.is_empty() || side.comments > 0 %}
+<section class="w-full">
+<div class="mb-0.5 flex h-6 min-w-0 items-center justify-between gap-2"><h2 class="min-w-0 truncate ps-2 mu-label-sm text-mu-text-secondary select-none">{{ c.t.s("memo.on-this-memo") }}</h2></div>
+<div class="flex flex-col gap-0.5">
+{%- if !side.outline.is_empty() %}
+<nav class="relative flex flex-col gap-0.5" data-outline="">
+{%- for h in side.outline %}
+<a href="{{ h.href }}" class="mu-button mu-button-ghost mu-base mu-s-sm mu-focus relative w-full justify-start{% if h.first %} font-medium{% endif %}"{% if h.first %} aria-current="location"{% endif %} style="padding-inline-start: {{ h.indent }}px;"><span class="absolute start-0.5 top-1/2 h-[13px] w-[2px] -translate-y-1/2 rounded-full transition-colors {% if h.first %}bg-mu-primary{% else %}bg-mu-line{% endif %}"></span><span class="min-w-0 flex-1 truncate">{{ h.text }}</span></a>
+{%- endfor %}
+</nav>
+{%- endif %}
+{%- if side.comments > 0 %}
+<a class="min-w-0 items-center mu-s-md flex h-(--mu-row-height) w-full gap-1 rounded-(--mu-row-radius) px-2 mu-body group transition-colors border border-transparent mu-focus focus-visible:border-mu-focus text-mu-text-secondary hover:bg-mu-hover/65 hover:text-mu-text" href="#memo-comments">{{ h::row_icon("message-circle") }}<span class="min-w-0 flex-1 truncate text-start">{{ c.t.s("memo.comment.self") }}</span><span class="mu-caption tabular-nums text-mu-text-secondary group-data-checked:text-mu-primary min-w-[3ch] shrink-0 text-end">{{ side.comments }}</span></a>
+{%- endif %}
+</div>
+</section>
+{%- endif %}
+{%- if !side.links.is_empty() %}
+<section class="w-full">
+<div class="mb-0.5 flex h-6 min-w-0 items-center justify-between gap-2"><h2 class="min-w-0 truncate ps-2 mu-label-sm text-mu-text-secondary select-none">{{ c.t.s("memo.connections") }}</h2></div>
+<div class="flex flex-col gap-0.5">
+{%- for l in side.links %}
+<a aria-label="{{ l.title }}: {{ l.snippet }}" title="{{ l.snippet }}" class="min-w-0 items-center mu-s-md flex h-(--mu-row-height) w-full gap-1 rounded-(--mu-row-radius) px-2 mu-body group transition-colors border border-transparent mu-focus focus-visible:border-mu-focus text-mu-text-secondary hover:bg-mu-hover/65 hover:text-mu-text" href="{{ c.base }}/memos/{{ l.uid }}">{{ h::row_icon("link") }}<span class="min-w-0 flex-1 truncate text-start">{{ l.snippet }}</span></a>
+{%- endfor %}
+</div>
+</section>
+{%- endif %}
+{%- if !side.archived %}
+<section class="w-full">
+<div class="mb-0.5 flex h-6 min-w-0 items-center justify-between gap-2"><h2 class="min-w-0 truncate ps-2 mu-label-sm text-mu-text-secondary select-none">{{ c.t.s("common.actions") }}</h2></div>
+<div class="flex flex-col gap-0.5" data-for="{{ side.uid }}">
+<button type="button" data-action="edit-detail" class="min-w-0 items-center mu-s-md flex h-(--mu-row-height) w-full gap-1 rounded-(--mu-row-radius) px-2 mu-body group transition-colors border border-transparent mu-focus focus-visible:border-mu-focus text-mu-text-secondary hover:bg-mu-hover/65 hover:text-mu-text">{{ h::row_icon("pen-line") }}<span data-sidebar-label="true" class="min-w-0 flex-1 truncate text-start">{{ c.t.s("common.edit") }}</span></button>
+<button type="button" data-action="write-comment" class="min-w-0 items-center mu-s-md flex h-(--mu-row-height) w-full gap-1 rounded-(--mu-row-radius) px-2 mu-body group transition-colors border border-transparent mu-focus focus-visible:border-mu-focus text-mu-text-secondary hover:bg-mu-hover/65 hover:text-mu-text">{{ h::row_icon("message-square-plus") }}<span data-sidebar-label="true" class="min-w-0 flex-1 truncate text-start">{{ c.t.s("memo.comment.write-a-comment") }}</span></button>
+<button type="button" aria-haspopup="menu" aria-expanded="false" aria-label="{{ c.t.s("common.share") }}" data-popup="share" class="mu-menu-trigger min-w-0 items-center mu-s-md flex h-(--mu-row-height) w-full gap-1 rounded-(--mu-row-radius) px-2 mu-body group transition-colors border border-transparent mu-focus focus-visible:border-mu-focus text-mu-text-secondary hover:bg-mu-hover/65 hover:text-mu-text">{{ h::row_icon("share-2") }}<span class="min-w-0 flex-1 truncate text-start">{{ c.t.s("common.share") }}</span>{{ h::icon("chevron-down", "mu-icon-sm shrink-0 opacity-55") }}</button>
+</div>
+</section>
+{%- endif %}
+{%- endif %}
 {%- if let Some(month) = sb.stats %}
 <section class="w-full" aria-label="{{ c.t.s("common.statistics") }}" id="sidebar-stats">
 {% include "partials/month.html" %}

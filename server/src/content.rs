@@ -139,6 +139,44 @@ pub fn derive(html: &str) -> Derived {
     d
 }
 
+fn strip_tags(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            c if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    unescape(out.trim())
+}
+
+/// The h1–h4 headings with ids, as `(level, id, text)`, for the memo's outline.
+pub fn headings(html: &str) -> Vec<(u8, String, String)> {
+    let mut out = vec![];
+    for level in 1..=4u8 {
+        let open = format!("<h{level}");
+        let close = format!("</h{level}>");
+        let mut rest = html;
+        while let Some(at) = rest.find(&open) {
+            let after = &rest[at..];
+            let Some(tag_end) = after.find('>') else { break };
+            let Some(end) = after.find(&close) else { break };
+            if let Some(id) = attr(&after[..tag_end], "id") {
+                let text = strip_tags(&after[tag_end + 1..end]);
+                if !text.is_empty() {
+                    out.push((html.len() - rest.len() + at, level, id.to_string(), text));
+                }
+            }
+            rest = &after[end..];
+        }
+    }
+    out.sort_by_key(|h| h.0);
+    out.into_iter().map(|(_, l, id, t)| (l, id, t)).collect()
+}
+
 /// Plain text of the start of the memo, for link pickers and references.
 pub fn snippet(markdown: &str) -> String {
     const MAX: usize = 160;

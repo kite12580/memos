@@ -129,11 +129,8 @@ function playAudio(button: HTMLElement) {
 
 async function onAction(el: HTMLElement, e: MouseEvent) {
   const action = el.dataset.action!;
-  const popupCard = el.closest<HTMLElement>("[role=menu][data-card], .mu-positioner [data-card]");
-  const card =
-    cards.cardOf(el) ??
-    (popupCard ? $<HTMLElement>(`[data-card="${popupCard.dataset.card}"]`) : null) ??
-    (el.closest<HTMLElement>(".mu-positioner") && currentCard ? currentCard : null);
+  const inPopup = el.closest<HTMLElement>(".mu-positioner");
+  const card = inPopup ? currentCard : cards.cardOf(el);
   switch (action) {
     case "pref":
       return setPref(el.dataset.key!, el.dataset.value!);
@@ -159,7 +156,12 @@ async function onAction(el: HTMLElement, e: MouseEvent) {
     case "write-comment": {
       const holder = $("[data-comment-composer]")!;
       holder.hidden = false;
+      holder.scrollIntoView({ block: "center" });
       return (await editor()).activate($("[data-composer]", holder)!);
+    }
+    case "edit-detail": {
+      const main = $<HTMLElement>(`main [data-card="${el.closest<HTMLElement>("[data-for]")?.dataset.for}"]`);
+      return main && (await editor()).editCard(main);
     }
   }
   if (!card) return;
@@ -206,6 +208,9 @@ function onPopup(trigger: HTMLElement) {
       return import("./reactions").then((r) => r.openPicker(trigger, (emoji) => currentCard && cards.react(currentCard, emoji)));
     case "insert-menu":
       return editor().then((m) => m.openInsertMenu(trigger));
+    case "share":
+      currentCard = $<HTMLElement>(`main [data-card="${trigger.closest<HTMLElement>("[data-for]")?.dataset.for}"]`);
+      return openTemplate(trigger, "tpl-copy-menu", "bottom", "start");
   }
 }
 

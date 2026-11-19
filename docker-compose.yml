@@ -1,0 +1,14 @@
+services:
+  memos-lite:
+    build: .
+    container_name: memos-lite
+    ports:
+      - "5230:5230"
+    environment:
+      BASE_PATH: ""
+      API_TOKEN: ""
+      TZ: ""
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

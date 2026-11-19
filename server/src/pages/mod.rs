@@ -293,7 +293,7 @@ pub fn collection_sidebar(c: &Ctx, data: &Collection, active: &'static str, stat
         views: Some(view_rows(&data.views)),
         active_view: data.view.as_ref().map(|w| w.id),
         tags: Some(v::tag_rows(c.base, &data.tags, c.prefs.tag_tree, active_tag)),
-        sections: None,
+        ..Default::default()
     }
 }
 
@@ -531,10 +531,6 @@ pub async fn link_search(app: &Arc<App>, req: &Request) -> Response {
 pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     let c = app.ctx(req);
     let uid_owned = uid.to_string();
-    let today = v::today(c.now, &c.prefs.tz);
-    let month = v::month_start(today.year(), today.month());
-    let (from, to) = v::month_range(month, &c.prefs.tz);
-    let app2 = app.clone();
     let data = app
         .db
         .with(move |conn| {
@@ -545,16 +541,10 @@ pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
             let mut all = vec![m];
             all.extend(comments);
             let extras = Extras::load(conn, &all, false)?;
-            Ok(Some((
-                all,
-                extras,
-                app2.tag_counts(conn)?,
-                memos::created_between(conn, from, to)?,
-                crate::db::views::list(conn)?,
-            )))
+            Ok(Some((all, extras)))
         })
         .await;
-    let (all, extras, tags, created, views) = match data {
+    let (all, extras) = match data {
         Ok(Some(d)) => d,
         Ok(None) => return Response::not_found(),
         Err(e) => return e.into(),
@@ -566,12 +556,8 @@ pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
         all[0].snippet.chars().take(60).collect::<String>().trim()
     );
     let sb = Sidebar {
-        active: "",
-        stats: Some(v::month_view(&c.t, c.base, month, &created, &c.prefs.tz, c.now)),
-        views: Some(view_rows(&views)),
-        active_view: None,
-        tags: Some(v::tag_rows(c.base, &tags, c.prefs.tag_tree, None)),
-        sections: None,
+        memo: Some(v::MemoSide::new(&card, &all[0].html, cards.len())),
+        ..Default::default()
     };
     let composer = (!card.archived).then(|| Composer::comment(&c, &card.uid));
     let p = MemoPage {

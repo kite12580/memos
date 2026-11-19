@@ -12,20 +12,12 @@ import { articleOf, initClamps, replaceCard } from "../lib/cards";
 import { layoutGrid } from "../lib/list";
 import { MEMO_EDITOR_THEME, MEMO_FOCUS_EDITOR_THEME, memoEditorLabels, memoExtensions, memoResolveUrl, memoSanitizeHtml, memoTagOptions } from "../memos/memo-markdown";
 import { MEMO_MARKDOWN } from "../memos/memo-ast";
-import { renderHTML, setTranslate } from "./render";
+import { renderHTML } from "./render";
+import { ready, t } from "./strings";
 import { type Uploaded, uploadFile } from "./upload";
 
 declare const RENDER_VERSION: string;
 
-let strings: Record<string, string> = {};
-const t = (key: string) => strings[key] ?? key;
-const ready = request("/f/strings")
-  .then((r) => r.json())
-  .then((s) => {
-    strings = s;
-    setTranslate(t);
-  })
-  .catch(() => undefined);
 
 export interface Relation {
   uid: string;

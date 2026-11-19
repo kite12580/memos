@@ -58,50 +58,6 @@
     }
   }
 
-  /* The editor's theme, set once here instead of on every memo's root element (MEMO_EDITOR_THEME). */
-  .memo-content-root,
-  .memo-editor-root {
-    --mbe-text-light: var(--mu-text);
-    --mbe-muted-light: var(--mu-text-secondary);
-    --mbe-bg-light: transparent;
-    --mbe-accent-light: var(--mu-accent);
-    --mbe-link-light: var(--mu-accent);
-    --mbe-code-bg-light: var(--mu-well);
-    --mbe-border-light: var(--mu-line);
-    --mbe-popup-bg-light: var(--mu-surface);
-    --mbe-popup-border-light: var(--mu-line);
-    --mbe-hover-light: var(--mu-hover);
-    --mbe-danger-light: var(--mu-danger);
-    --mbe-callout-note-light: var(--mu-accent);
-    --mbe-callout-tip-light: var(--mu-success);
-    --mbe-callout-important-light: var(--mu-accent);
-    --mbe-callout-warning-light: var(--mu-warning);
-    --mbe-callout-caution-light: var(--mu-danger);
-    --mbe-text-dark: var(--mu-text);
-    --mbe-muted-dark: var(--mu-text-secondary);
-    --mbe-bg-dark: transparent;
-    --mbe-accent-dark: var(--mu-accent);
-    --mbe-link-dark: var(--mu-accent);
-    --mbe-code-bg-dark: var(--mu-well);
-    --mbe-border-dark: var(--mu-line);
-    --mbe-popup-bg-dark: var(--mu-surface);
-    --mbe-popup-border-dark: var(--mu-line);
-    --mbe-hover-dark: var(--mu-hover);
-    --mbe-danger-dark: var(--mu-danger);
-    --mbe-callout-note-dark: var(--mu-accent);
-    --mbe-callout-tip-dark: var(--mu-success);
-    --mbe-callout-important-dark: var(--mu-accent);
-    --mbe-callout-warning-dark: var(--mu-warning);
-    --mbe-callout-caution-dark: var(--mu-danger);
-    --mbe-font: inherit;
-    --mbe-mono: var(--mu-font-mono);
-    --mbe-font-size: 16px;
-    --mbe-line-height: 24px;
-    --mbe-radius: var(--mu-radius-md);
-    --mbe-block-gap: 12px;
-    color-scheme: inherit;
-  }
-
   /* Highlighted code saves both schemes' colors as variables (editor/render.ts). */
   .memos-code-token {
     color: var(--hl);
@@ -109,4 +65,48 @@
   [data-theme="dark"] .memos-code-token {
     color: var(--hd, var(--hl));
   }
+}
+
+/* The editor's theme (MEMO_EDITOR_THEME), set here once instead of inline on every memo's root.
+   Unlayered and two classes deep, as the editor's own defaults are unlayered `.mbe-root` rules. */
+.mbe-root:is(.memo-content-root, .memo-editor-root) {
+  --mbe-text-light: var(--mu-text);
+  --mbe-muted-light: var(--mu-text-secondary);
+  --mbe-bg-light: transparent;
+  --mbe-accent-light: var(--mu-accent);
+  --mbe-link-light: var(--mu-accent);
+  --mbe-code-bg-light: var(--mu-well);
+  --mbe-border-light: var(--mu-line);
+  --mbe-popup-bg-light: var(--mu-surface);
+  --mbe-popup-border-light: var(--mu-line);
+  --mbe-hover-light: var(--mu-hover);
+  --mbe-danger-light: var(--mu-danger);
+  --mbe-callout-note-light: var(--mu-accent);
+  --mbe-callout-tip-light: var(--mu-success);
+  --mbe-callout-important-light: var(--mu-accent);
+  --mbe-callout-warning-light: var(--mu-warning);
+  --mbe-callout-caution-light: var(--mu-danger);
+  --mbe-text-dark: var(--mu-text);
+  --mbe-muted-dark: var(--mu-text-secondary);
+  --mbe-bg-dark: transparent;
+  --mbe-accent-dark: var(--mu-accent);
+  --mbe-link-dark: var(--mu-accent);
+  --mbe-code-bg-dark: var(--mu-well);
+  --mbe-border-dark: var(--mu-line);
+  --mbe-popup-bg-dark: var(--mu-surface);
+  --mbe-popup-border-dark: var(--mu-line);
+  --mbe-hover-dark: var(--mu-hover);
+  --mbe-danger-dark: var(--mu-danger);
+  --mbe-callout-note-dark: var(--mu-accent);
+  --mbe-callout-tip-dark: var(--mu-success);
+  --mbe-callout-important-dark: var(--mu-accent);
+  --mbe-callout-warning-dark: var(--mu-warning);
+  --mbe-callout-caution-dark: var(--mu-danger);
+  --mbe-font: inherit;
+  --mbe-mono: var(--mu-font-mono);
+  --mbe-font-size: 16px;
+  --mbe-line-height: 24px;
+  --mbe-radius: var(--mu-radius-md);
+  --mbe-block-gap: 12px;
+  color-scheme: inherit;
 }

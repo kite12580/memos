@@ -179,6 +179,55 @@ pub struct Sidebar {
     pub active_view: Option<i64>,
     pub tags: Option<Vec<TagRow>>,
     pub sections: Option<Vec<NavGroup>>,
+    pub memo: Option<MemoSide>,
+}
+
+/// The memo detail page's sidebar: its outline, comments and links, and actions.
+pub struct MemoSide {
+    pub uid: String,
+    pub outline: Vec<OutlineRow>,
+    pub comments: usize,
+    pub links: Vec<RefRow>,
+    pub archived: bool,
+}
+
+pub struct OutlineRow {
+    pub href: String,
+    pub text: String,
+    pub indent: u32,
+    pub first: bool,
+}
+
+impl MemoSide {
+    pub fn new(card: &Card, html: &str, comments: usize) -> MemoSide {
+        MemoSide {
+            uid: card.uid.clone(),
+            outline: crate::content::headings(html)
+                .into_iter()
+                .enumerate()
+                .map(|(i, (level, id, text))| OutlineRow {
+                    href: format!("#{id}"),
+                    text,
+                    indent: 8 + (level as u32 - 1) * 12,
+                    first: i == 0,
+                })
+                .collect(),
+            comments,
+            links: card
+                .refs
+                .iter()
+                .map(|r| RefRow {
+                    uid: r.uid.clone(),
+                    snippet: r.snippet.clone(),
+                    icon: "link",
+                    title: r.title,
+                    date: r.date.clone(),
+                    date_iso: r.date_iso.clone(),
+                })
+                .collect(),
+            archived: card.archived,
+        }
+    }
 }
 
 impl Sidebar {

@@ -37,10 +37,12 @@ fn keys_in(src: &str, calls: &[&str], out: &mut BTreeSet<String>) {
         let mut rest = src;
         while let Some(at) = rest.find(call) {
             let before = rest[..at].chars().next_back();
-            rest = &rest[at + call.len()..];
+            rest = rest[at + call.len()..].trim_start();
             if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
                 continue;
             }
+            let Some(after) = rest.strip_prefix('"') else { continue };
+            rest = after;
             let Some(end) = rest.find('"') else { break };
             let key = &rest[..end];
             if !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || "._-".contains(c)) {
@@ -84,13 +86,13 @@ fn main() {
     files(&root.join("src"), &["rs"], &mut sources);
     for f in &sources {
         let src = fs::read_to_string(f).unwrap();
-        keys_in(&src, &["t.s(\"", "t.n(\"", "t.f(\""], &mut server_keys);
+        keys_in(&src, &["t.s(", "t.n(", "t.f("], &mut server_keys);
     }
     let mut client = vec![];
     files(&client_src, &["ts"], &mut client);
     for f in &client {
         let src = fs::read_to_string(f).unwrap();
-        keys_in(&src, &["t(\""], &mut client_keys);
+        keys_in(&src, &["t("], &mut client_keys);
     }
 
     let mut langs: Vec<(String, BTreeMap<String, String>)> = vec![];
