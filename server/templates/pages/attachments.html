@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block main %}
+<section class="@container min-h-full w-full pb-10 pt-3 md:pt-6" data-page="attachments">
+<div class="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 sm:gap-6 sm:px-6">
+<div class="min-h-[16rem] pt-1">
+{%- if is("unused") %}
+{%- if lib.unused.is_empty() %}
+<div class="py-12 text-center mu-body text-mu-text-secondary">{{ c.t.s("message.no-data") }}</div>
+{%- else %}
+<div class="space-y-4">
+<div class="flex flex-col gap-3 rounded-mu-xl border border-mu-warning/30 bg-mu-warning-soft p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="mu-label text-mu-text">{{ c.t.s("attachment-library.unused.title") }}</h2><p class="mt-1 mu-body text-mu-text-secondary">{{ c.t.s("attachment-library.unused.description") }}</p></div><button type="button" class="mu-button mu-button-neutral mu-base mu-s-md mu-focus shrink-0" data-delete-unused="" data-title="{{ c.t.s("resource.delete-all-unused-confirm") }}" data-description="{{ c.t.s("attachment-library.unused.confirm-description") }}" data-done="{{ c.t.s("resource.delete-all-unused-success") }}">{{ h::icon("trash-2", "") }}<span class="mu-button-label">{{ c.t.s("resource.delete-all-unused") }}</span></button></div>
+<div class="space-y-2.5" data-part="unused">{% include "partials/attachment_unused.html" %}</div>
+</div>
+{%- endif %}
+{%- else if is("all") %}
+{%- if total() == 0 %}
+<div class="py-16 text-center mu-body text-mu-text-secondary">{{ c.t.s("attachment-library.empty.all") }}</div>
+{%- else %}
+<div class="space-y-9">
+{%- if n(0) > 0 %}<section class="space-y-3"><h2 class="mu-label text-mu-text">{{ c.t.s("attachment-library.tabs.media") }}</h2><div class="flex flex-col gap-6 sm:gap-8" data-part="media">{% include "partials/attachment_media.html" %}</div></section>{% endif %}
+{%- if n(2) > 0 %}<section class="space-y-3"><h2 class="mu-label text-mu-text">{{ c.t.s("attachment-library.tabs.documents") }}</h2><div class="space-y-3" data-part="documents">{% include "partials/attachment_documents.html" %}</div></section>{% endif %}
+{%- if n(1) > 0 %}<section class="space-y-3"><h2 class="mu-label text-mu-text">{{ c.t.s("attachment-library.tabs.audio") }}</h2><div class="space-y-2.5" data-part="audio">{% include "partials/attachment_audio.html" %}</div></section>{% endif %}
+</div>
+{%- endif %}
+{%- else if is("media") && n(0) == 0 %}{% let icon = "image" %}{% let title = c.t.s("attachment-library.tabs.media") %}{% let text = c.t.s("attachment-library.empty.media") %}{% include "partials/attachment_empty.html" %}
+{%- else if is("media") %}<div class="flex flex-col gap-6 sm:gap-8" data-part="media">{% include "partials/attachment_media.html" %}</div>
+{%- else if is("documents") && n(2) == 0 %}{% let icon = "file-stack" %}{% let title = c.t.s("attachment-library.tabs.documents") %}{% let text = c.t.s("attachment-library.empty.documents") %}{% include "partials/attachment_empty.html" %}
+{%- else if is("documents") %}<div class="space-y-3" data-part="documents">{% include "partials/attachment_documents.html" %}</div>
+{%- else if n(1) == 0 %}{% let icon = "file-headphone" %}{% let title = c.t.s("attachment-library.tabs.audio") %}{% let text = c.t.s("attachment-library.empty.audio") %}{% include "partials/attachment_empty.html" %}
+{%- else %}<div class="space-y-2.5" data-part="audio">{% include "partials/attachment_audio.html" %}</div>
+{%- endif %}
+{%- if !is("unused") %}{% include "partials/attachment_more.html" %}{% endif %}
+</div>
+</div>
+</section>
+{% endblock %}

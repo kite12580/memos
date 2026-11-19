@@ -31,6 +31,13 @@ function place(positioner: HTMLElement, popup: HTMLElement, anchor: HTMLElement,
     const start = rtl ? a.right - p.width : a.left;
     const end = rtl ? a.left : a.right - p.width;
     x = align === "start" ? start : align === "end" ? end : a.left + (a.width - p.width) / 2;
+    if (align !== "center" && (x + p.width > vw - 8 || x < 8)) {
+      const flipped = align === "start" ? end : start;
+      if (flipped + p.width <= vw - 8 && flipped >= 8) {
+        x = flipped;
+        align = align === "start" ? "end" : "start";
+      }
+    }
     y = a.bottom + GAP;
     if (y + p.height > vh - 8 && a.top - GAP - p.height > 8) {
       y = a.top - GAP - p.height;
@@ -73,7 +80,7 @@ export function isOpenFor(trigger: HTMLElement) {
  * Opens `popup` anchored to `trigger`. A popup opened from inside another
  * stays as its child; anything else closes the open ones first.
  */
-export function openPopup(trigger: HTMLElement, popup: HTMLElement, side: Side = "bottom", align: Align = "start", onClose?: () => void) {
+export function openPopup(trigger: HTMLElement, popup: HTMLElement, side: Side = "bottom", align: Align = "start", onClose?: () => void, anchor = trigger) {
   const parentIndex = stack.findIndex((l) => l.el.contains(trigger));
   closeFrom(parentIndex + 1);
   const positioner = document.createElement("div");
@@ -82,7 +89,7 @@ export function openPopup(trigger: HTMLElement, popup: HTMLElement, side: Side =
   positioner.style.cssText = "position:absolute;top:0;left:0";
   positioner.append(popup);
   document.body.append(positioner);
-  place(positioner, popup, trigger, side, align);
+  place(positioner, popup, anchor, side, align);
   enter(popup);
   trigger.setAttribute("data-popup-open", "");
   trigger.setAttribute("aria-expanded", "true");
@@ -92,12 +99,12 @@ export function openPopup(trigger: HTMLElement, popup: HTMLElement, side: Side =
   return positioner;
 }
 
-export function openTemplate(trigger: HTMLElement, id: string, side: Side = "bottom", align: Align = "start", setup?: (popup: HTMLElement) => void) {
+export function openTemplate(trigger: HTMLElement, id: string, side: Side = "bottom", align: Align = "start", setup?: (popup: HTMLElement) => void, anchor = trigger) {
   const frag = fromTemplate(id);
   const popup = frag?.firstElementChild as HTMLElement | null;
   if (!popup) return null;
   setup?.(popup);
-  openPopup(trigger, popup, side, align);
+  openPopup(trigger, popup, side, align, undefined, anchor);
   return popup;
 }
 

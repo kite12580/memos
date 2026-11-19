@@ -2,7 +2,7 @@ use crate::assets::Assets;
 use crate::config::Config;
 use crate::db::{Db, DbError};
 use crate::http::{MIN_COMPRESS_BYTES, Request, Response, accepts, decode_path, gzip_fast};
-use crate::views::{Ctx, Prefs};
+use crate::views::{Ctx, Prefs, TagStyles};
 use crate::{api, actions, files, i18n, pages};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,6 +15,7 @@ pub struct App {
     /// Bumped on every write; part of every page's ETag.
     data_version: AtomicU64,
     tags: Mutex<Option<(u64, Arc<Vec<(String, i64)>>)>>,
+    tag_styles: Mutex<Arc<TagStyles>>,
     pub now: fn() -> i64,
 }
 
@@ -34,12 +35,14 @@ impl App {
         crate::h::set_sprite(format!("{}/{}", cfg.base, assets.sprite));
         let mut seed = [0u8; 4];
         let _ = getrandom::fill(&mut seed);
+        let meta = db.blocking(|c| crate::db::views::tag_meta(c)).unwrap_or_default();
         App {
             db,
             cfg,
             assets,
             data_version: AtomicU64::new(u32::from_le_bytes(seed) as u64),
             tags: Mutex::new(None),
+            tag_styles: Mutex::new(Arc::new(TagStyles::new(meta))),
             now: crate::http::now_secs,
         }
     }
@@ -66,6 +69,14 @@ impl App {
         Ok(tags)
     }
 
+    pub fn tag_styles(&self) -> Arc<TagStyles> {
+        self.tag_styles.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    pub fn set_tag_meta(&self, meta: Vec<crate::db::views::TagMeta>) {
+        *self.tag_styles.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(TagStyles::new(meta));
+    }
+
     pub fn ctx(&self, req: &Request) -> Ctx<'_> {
         let prefs = Prefs::from_request(req, &self.cfg.tz);
         let t = i18n::T::pick(req.cookie("lang").as_deref(), req.header("accept-language"));
@@ -82,6 +93,7 @@ impl App {
             prefs,
             q: String::new(),
             now: (self.now)(),
+            tags: self.tag_styles(),
         }
     }
 

@@ -1,0 +1,80 @@
+{% extends "layout.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block main %}
+<section class="@container flex min-h-full w-full flex-col items-center">
+<div class="mx-auto w-full px-4 pb-8 pt-3 sm:px-6 md:pt-6">
+<section class="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-10" data-page="views" data-create="{{ c.t.s("common.create") }}" data-cancel="{{ c.t.s("common.cancel") }}" data-create-title="{{ c.t.s("setting.memo-view.create") }}" data-edit-title="{{ c.t.s("setting.memo-view.edit") }}" data-required="{{ c.t.s("setting.memo-view.title-filter-required") }}" data-valid="{{ c.t.s("setting.memo-view.filter-valid") }}" data-created="{{ c.t.s("setting.memo-view.create-success") }}" data-updated="{{ c.t.s("setting.memo-view.update-success") }}" data-delete-confirm="{{ c.t.s("setting.memo-view.delete-confirm") }}" data-deleted="{{ c.t.s("setting.memo-view.delete-success") }}" data-use-emoji="{{ c.t.s("space.icon.use-emoji") }}">
+<div class="flex flex-col gap-2 border-b border-mu-line pb-5 sm:flex-row sm:items-end sm:justify-between">
+<div class="space-y-1">
+<div class="flex items-center gap-2 text-mu-text-secondary">{{ h::icon("funnel", "mu-icon") }}<span class="mu-label">{{ c.t.s("common.views") }}</span></div>
+<h1 class="mu-heading tracking-normal text-mu-text">{{ c.t.s("common.views") }}</h1>
+<p class="max-w-2xl mu-body text-mu-text-secondary">{{ c.t.s("setting.memo-view.page-description") }}</p>
+</div>
+<button type="button" class="mu-button mu-button-neutral mu-base mu-s-md mu-focus" data-toggle-form="">{{ h::icon("plus", "") }}<span class="mu-button-label">{{ c.t.s("common.create") }}</span></button>
+</div>
+<div class="grid grid-cols-1 gap-6" data-grid="">
+<div class="flex min-w-0 flex-col gap-6">
+<div inert class="overflow-hidden rounded-mu-lg border border-mu-line bg-mu-canvas transition-[max-height,opacity] duration-200 max-h-0 border-transparent opacity-0" data-form="">
+<div class="grid gap-5 p-4 sm:p-5">
+<div class="flex items-start justify-between gap-3"><div><h2 class="mu-label text-mu-text" data-form-title="">{{ c.t.s("setting.memo-view.create") }}</h2><p class="mt-1 mu-body text-mu-text-secondary">{{ c.t.s("setting.memo-view.form-description") }}</p></div></div>
+<div class="grid gap-4">
+<div class="flex flex-col gap-1"><label for="view-title" class="mu-label">{{ c.t.s("common.title") }}</label><div class="flex items-center gap-2"><button type="button" aria-label="{{ c.t.s("setting.memo-view.change-icon") }}" title="{{ c.t.s("setting.memo-view.change-icon") }}" aria-haspopup="dialog" aria-expanded="false" class="mu-button mu-button-neutral mu-button-icon mu-base mu-s-md mu-focus mu-popover-trigger" data-icon-picker="" data-value="">{{ h::icon("parentheses", "mu-icon shrink-0 size-5 text-xl") }}</button><span class="mu-input-root mu-base mu-s-md"><input id="view-title" placeholder="{{ c.t.s("setting.memo-view.title-placeholder") }}" class="mu-input" value="" autocomplete="off"></span></div></div>
+<div data-orientation="vertical" class="mu-field-root"><label for="view-filter" class="mu-field-label mu-label">{{ c.t.s("common.filter") }}</label><textarea rows="5" id="view-filter" placeholder="#work is:pinned" class="mu-textarea mu-base mu-s-md font-mono" spellcheck="false"></textarea><p class="mu-field-description mu-caption">{% for s in crate::pages::views::SYNTAX %}{% if loop.index0 > 0 %} {% endif %}<span class="font-mono">{{ s }}</span>{% endfor %}</p></div>
+</div>
+<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" class="mu-button mu-button-neutral mu-base mu-s-md mu-focus" data-validate="">{{ h::icon("circle-check", "") }}<span class="mu-button-label">{{ c.t.s("setting.memo-view.validate") }}</span></button><button type="button" class="mu-button mu-button-primary mu-base mu-s-md mu-focus" data-save="">{{ h::icon("save", "") }}<span class="mu-button-label">{{ c.t.s("common.save") }}</span></button></div>
+</div>
+</div>
+<div class="flex flex-col gap-3" data-list="">
+<div class="flex items-center justify-between"><h2 class="mu-label text-mu-text">{{ c.t.s("setting.memo-view.all") }}</h2><span class="mu-badge mu-badge-outline mu-base mu-s-xs mu-caption-xs mu-badge-xs"><span class="mu-badge-label">{{ views.len() }}</span></span></div>
+{%- if views.is_empty() %}
+<div class="rounded-mu-lg border border-dashed border-mu-line px-4 py-10 text-center"><p class="mu-label text-mu-text">{{ c.t.s("setting.memo-view.empty-title") }}</p><p class="mt-1 mu-body text-mu-text-secondary">{{ c.t.s("setting.memo-view.empty-description") }}</p><button type="button" class="mu-button mu-button-neutral mu-base mu-s-md mu-focus mt-4" data-open-form="">{{ h::icon("plus", "") }}<span class="mu-button-label">{{ c.t.s("setting.memo-view.create") }}</span></button></div>
+{%- else %}
+<div class="divide-y divide-mu-line overflow-hidden rounded-mu-lg border border-mu-line">
+{%- for w in views %}
+<div class="grid gap-3 bg-mu-canvas px-4 py-3 sm:grid-cols-[minmax(10rem,14rem)_minmax(0,1fr)_2rem]" data-view="{{ w.id }}" data-name="{{ w.name }}" data-icon="{{ w.icon }}" data-query="{{ w.query }}">
+<div class="min-w-0"><div class="flex items-center gap-2 mu-label text-mu-text">{{ w.icon_html() }}<span class="truncate">{{ w.name }}</span></div><div class="mt-1 font-mono mu-caption text-mu-text-secondary">{{ w.id }}</div></div>
+<pre class="min-w-0 overflow-x-auto rounded-mu-md bg-mu-well/50 px-3 py-2 font-mono mu-caption text-mu-text-secondary">{{ w.query }}</pre>
+<button type="button" aria-label="{{ c.t.s("common.more") }}: {{ w.name }}" aria-haspopup="menu" aria-expanded="false" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-md mu-focus mu-menu-trigger justify-self-end" data-view-menu="">{{ h::icon("ellipsis-vertical", "") }}</button>
+</div>
+{%- endfor %}
+</div>
+{%- endif %}
+</div>
+</div>
+<aside class="flex flex-col gap-5" hidden data-guide="">
+<div class="rounded-mu-lg border border-mu-line p-4">
+<h2 class="mu-label text-mu-text">{{ c.t.s("setting.memo-view.examples-title") }}</h2>
+<div class="mt-3 flex flex-col gap-2">
+{%- for e in examples() %}
+<button type="button" class="group w-full cursor-pointer rounded-mu-md border border-transparent p-2 text-left transition-colors hover:bg-mu-hover mu-focus focus-visible:border-mu-focus" data-example="{{ e.query }}" data-title="{{ e.title }}"><span class="flex items-center gap-2 mu-label text-mu-text">{{ h::icon(e.icon, "mu-icon text-mu-text-secondary group-hover:text-mu-primary") }}{{ e.title }}</span><span class="mt-1 block font-mono mu-caption text-mu-text-secondary">{{ e.query }}</span><span class="mt-1 block mu-caption text-mu-text-secondary">{{ e.description }}</span></button>
+{%- endfor %}
+</div>
+</div>
+<div class="rounded-mu-lg border border-mu-line p-4">
+<h2 class="mu-label text-mu-text">{{ c.t.s("setting.memo-view.fields-title") }}</h2>
+<div class="mt-3 flex flex-wrap gap-2">{% for s in crate::pages::views::SYNTAX %}<span class="mu-badge mu-badge-neutral mu-base mu-s-xs mu-caption font-mono"><span class="mu-badge-label">{{ s }}</span></span>{% endfor %}</div>
+</div>
+</aside>
+</div>
+</section>
+</div>
+</section>
+<template id="tpl-view-menu"><div role="menu" class="mu-menu-popup mu-popup mu-popup-motion mu-base mu-s-sm">
+<div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption" data-view-action="edit"><span class="mu-option-icon" aria-hidden="true">{{ h::icon("pencil", "") }}</span><span class="mu-menu-label">{{ c.t.s("common.edit") }}</span></div>
+<div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption" data-view-action="up"><span class="mu-option-icon" aria-hidden="true">{{ h::icon("arrow-up", "") }}</span><span class="mu-menu-label">{{ c.t.s("setting.usage-limits.move-up") }}</span></div>
+<div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption" data-view-action="down"><span class="mu-option-icon" aria-hidden="true">{{ h::icon("arrow-down", "") }}</span><span class="mu-menu-label">{{ c.t.s("setting.usage-limits.move-down") }}</span></div>
+<div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption" data-view-action="delete"><span class="mu-option-icon" aria-hidden="true">{{ h::icon("trash-2", "") }}</span><span class="mu-menu-label">{{ c.t.s("common.delete") }}</span></div>
+</div></template>
+<template id="tpl-icon-picker"><div role="dialog" aria-label="{{ c.t.s("setting.memo-view.change-icon") }}" class="mu-popover-popup mu-popup mu-popup-motion mu-base mu-s-md w-[306px] max-w-[calc(100vw-2rem)]">
+<div data-orientation="horizontal" class="mu-tabs-root">
+<div class="flex items-center justify-between gap-2"><div data-orientation="horizontal" role="tablist" aria-label="{{ c.t.s("space.icon.kind") }}" class="mu-tabs-list mu-segmented mu-base mu-s-md shrink-0"><span data-orientation="horizontal" role="presentation" class="mu-tabs-indicator mu-segmented-key"></span><button type="button" role="tab" aria-selected="true" data-active="" tabindex="0" class="mu-tabs-tab mu-segmented-item mu-focus" data-tab="icons">{{ c.t.s("space.icon.icons") }}</button><button type="button" role="tab" aria-selected="false" tabindex="-1" class="mu-tabs-tab mu-segmented-item mu-focus" data-tab="emoji">{{ c.t.s("space.icon.emoji") }}</button></div><button type="button" title="{{ c.t.s("space.icon.reset") }}" class="mu-button mu-button-ghost mu-base mu-s-sm mu-focus min-w-0 invisible" data-reset=""><span class="mu-button-label">{{ c.t.s("space.icon.reset") }}</span></button></div>
+<div data-orientation="horizontal" role="tabpanel" tabindex="-1" class="mu-tabs-panel mu-focus -mx-px flex h-72 max-h-[calc(100dvh-12rem)] min-h-0 flex-col gap-2">
+<div role="group" class="mu-input-root mu-base mu-s-md"><span class="mu-input-prefix">{{ h::icon("search", "") }}</span><input autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-haspopup="grid" aria-autocomplete="list" class="mu-input" value="" data-search="" data-icons-label="{{ c.t.s("space.icon.search-icons") }}" data-emoji-label="{{ c.t.s("space.icon.search-emoji") }}" aria-label="{{ c.t.s("space.icon.search-icons") }}" placeholder="{{ c.t.s("space.icon.search-icons") }}"></div>
+<div class="-mx-1 min-h-0 flex-1 overflow-hidden"><div role="status" aria-live="polite" aria-atomic="true" class="mu-combobox-empty mu-body" data-empty="{{ c.t.s("space.icon.no-results") }}"></div><div role="grid" aria-label="{{ c.t.s("space.icon.icons") }}" class="mu-combobox-list h-full max-h-full" data-grid-icons="">
+{%- for row in icons() %}<div role="row" class="mu-combobox-row">{% for (name, label) in row %}<div role="gridcell" aria-selected="false" aria-label="{{ label }}" title="{{ label }}" class="mu-combobox-item" data-icon="lucide:{{ name }}"><span class="mu-combobox-item-text">{{ h::icon(name, "mu-icon shrink-0") }}</span><span class="mu-combobox-indicator"></span></div>{% endfor %}</div>{% endfor -%}
+</div></div>
+<p class="mu-caption text-mu-text-secondary invisible" data-emoji-help="">{{ c.t.s("space.icon.emoji-help") }}</p>
+</div>
+</div>
+</div></template>
+{% endblock %}

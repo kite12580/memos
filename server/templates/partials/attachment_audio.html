@@ -1,0 +1,6 @@
+{%- for a in lib.audio %}
+<article class="rounded-[18px] border border-mu-line/60 bg-mu-canvas/90 p-2.5">
+<div class="group/row relative flex h-7 w-full min-w-0 items-center gap-1 rounded-mu-md px-2 text-start mu-caption text-mu-text-secondary transition-colors hover:bg-mu-hover hover:text-mu-text border border-transparent" data-audio="{{ a.href }}"><button type="button" data-action="audio" aria-label="{{ c.t.s("editor.audio-recorder.play-recording") }}" class="flex size-5 shrink-0 items-center justify-center rounded-mu-sm mu-focus">{{ h::icon("play", "mu-icon-sm me-auto shrink-0") }}</button><span class="min-w-0 flex-1 truncate text-mu-text">{{ a.name }}</span></div>
+<div class="mt-2.5 flex items-center justify-between gap-2 border-t border-mu-line/60 px-0.5 pt-2.5"><div class="min-w-0 flex flex-wrap items-center gap-1.5">{{ a.date_meta() }}{% include "partials/attachment_chip.html" %}</div>{% include "partials/attachment_open.html" %}</div>
+</article>
+{%- endfor %}

@@ -366,9 +366,12 @@ pub struct MemoLink {
     pub created_ts: i64,
 }
 
+/// The memos one memo links to, and the memos linking to it.
+pub type Links = (Vec<MemoLink>, Vec<MemoLink>);
+
 /// For each memo, the memos it links to and the memos linking to it.
-pub fn relations(c: &Connection, ids: &[i64]) -> DbResult<HashMap<i64, (Vec<MemoLink>, Vec<MemoLink>)>> {
-    let mut out: HashMap<i64, (Vec<MemoLink>, Vec<MemoLink>)> = HashMap::new();
+pub fn relations(c: &Connection, ids: &[i64]) -> DbResult<HashMap<i64, Links>> {
+    let mut out: HashMap<i64, Links> = HashMap::new();
     if ids.is_empty() {
         return Ok(out);
     }
@@ -427,6 +430,7 @@ pub fn reactions(c: &Connection, ids: &[i64]) -> DbResult<HashMap<i64, Vec<Strin
 }
 
 /// Adds the reaction, or removes it if the memo has it.
+/// `now` orders reactions, so it is in milliseconds.
 pub fn toggle_reaction(c: &Connection, memo_id: i64, emoji: &str, now: i64) -> DbResult<()> {
     let removed = c
         .prepare_cached("DELETE FROM reaction WHERE memo_id = ? AND emoji = ?")?

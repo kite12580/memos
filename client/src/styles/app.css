@@ -67,6 +67,47 @@
   }
 }
 
+/* Cards out of view skip layout and paint until scrolled to; the server writes each card's
+   estimated height as its placeholder size. */
+#memo-list [data-card] {
+  content-visibility: auto;
+}
+
+/* Short names for memos' long class lists that repeat on every card: in stored memo HTML
+   (editor/render.ts ALIASES) and in templates/partials/card.html. */
+@layer utilities {
+  .m-card {
+    @apply relative flex flex-col justify-start items-start bg-mu-surface w-full px-4 py-3 gap-2 text-mu-text rounded-mu-lg border border-mu-line/70 transition-colors;
+  }
+  .m-time {
+    @apply shrink-0 whitespace-nowrap rounded-mu-sm text-start text-mu-text-secondary transition-colors select-none hover:text-mu-text border border-transparent focus-visible:border-mu-focus underline-offset-2 hover:underline;
+  }
+  .m-hover {
+    @apply flex sm:hidden sm:group-hover:flex sm:group-focus-within:flex sm:has-[[data-popup-open]]:flex;
+  }
+  .m-col {
+    @apply w-full flex flex-col justify-start items-start gap-2;
+  }
+  .m-content {
+    @apply relative w-full max-w-full wrap-break-word text-base leading-6;
+  }
+  .m-row {
+    @apply relative flex h-7 w-full min-w-0 items-center gap-1 rounded-mu-md px-2 text-start text-mu-text-secondary transition-colors hover:bg-mu-hover hover:text-mu-text aria-pressed:bg-mu-hover aria-pressed:text-mu-text data-popup-open:bg-mu-hover data-popup-open:text-mu-text border border-transparent focus-visible:border-mu-focus;
+  }
+  .m-tag {
+    @apply rich:inline rich:rounded-mu-sm rich:border rich:border-transparent rich:px-0.5 rich:box-decoration-clone text-mu-text rich:bg-mu-well rich:[&[role=button]]:hover:bg-mu-hover rich:focus-visible:border-mu-focus touch-manipulation;
+  }
+  .m-link {
+    @apply text-mu-accent underline decoration-mu-accent/50 underline-offset-2 transition-colors hover:decoration-mu-accent;
+  }
+  .m-code {
+    @apply font-mono text-[0.875em] bg-mu-well px-1 py-0.5 rounded-mu-md;
+  }
+  .m-task {
+    @apply [--mbe-border:var(--mu-control-edge)] [--mbe-accent:light-dark(var(--mu-accent),color-mix(in_oklab,var(--mu-accent)_55%,var(--mu-surface)))];
+  }
+}
+
 /* The editor's theme (MEMO_EDITOR_THEME), set here once instead of inline on every memo's root.
    Unlayered and two classes deep, as the editor's own defaults are unlayered `.mbe-root` rules. */
 .mbe-root:is(.memo-content-root, .memo-editor-root) {

@@ -262,7 +262,9 @@ pub async fn react(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     let Some(emoji) = body(req)["emoji"].as_str().map(str::to_string).filter(|e| !e.is_empty() && e.len() <= 32) else {
         return Response::error(400, "emoji is required");
     };
-    let now = (app.now)();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
     let uid_owned = uid.to_string();
     let res = app
         .db
@@ -344,8 +346,16 @@ pub async fn tag_meta(app: &Arc<App>, req: &Request) -> Response {
         color,
         blur: b["blur"].as_bool().unwrap_or(false),
     };
-    match app.db.with(move |c| views::set_tag_meta(c, &meta)).await {
-        Ok(()) => {
+    let res = app
+        .db
+        .with(move |c| {
+            views::set_tag_meta(c, &meta)?;
+            views::tag_meta(c)
+        })
+        .await;
+    match res {
+        Ok(meta) => {
+            app.set_tag_meta(meta);
             app.changed();
             Response::new(204)
         }

@@ -17,6 +17,19 @@ import { MEMO_MARKDOWN } from "../memos/memo-ast";
 import { headingIds } from "./headings";
 import { post } from "../lib/dom";
 import { ready, t } from "./strings";
+import { markdownStyles, tagStyles } from "../memos/markdownStyles";
+
+/**
+ * memos' class lists the read-only view repeats on every tag, link and inline
+ * code, and the short classes app.css defines to the same utilities. Stored
+ * HTML uses the short ones; it is sent on every page.
+ */
+const ALIASES: [string, string][] = [
+  [`${tagStyles.base} ${tagStyles.defaultColor} ${tagStyles.interactive}`, "m-tag mu-focus"],
+  [markdownStyles.link, "m-link"],
+  [markdownStyles.inlineCode, "m-code"],
+  [markdownStyles.taskList, "m-task"],
+];
 
 /** Loads what the read-only view would otherwise fill in later: code languages and the HTML sanitizer. */
 async function preload(markdown: string) {
@@ -45,7 +58,9 @@ function serialize(root: HTMLElement): string {
     const m = LIGHT_DARK.exec(el.getAttribute("style") ?? "");
     if (m) el.setAttribute("style", `--hl:${m[1]};--hd:${m[2]}`);
   }
-  return root.innerHTML;
+  let html = root.innerHTML;
+  for (const [long, short] of ALIASES) html = html.replaceAll(long, short);
+  return html;
 }
 
 /** The HTML memos' read-only view draws for `markdown`. */

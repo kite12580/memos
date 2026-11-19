@@ -1,0 +1,7 @@
+{%- for a in lib.documents %}
+<article class="flex items-center gap-2.5 rounded-[18px] border border-mu-line/60 bg-mu-canvas/90 p-3">
+<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-mu-lg bg-mu-well/45 text-mu-text-secondary">{{ h::icon("file", "mu-icon h-4.5 w-4.5") }}</div>
+<div class="min-w-0 flex-1"><div class="truncate mu-label text-mu-text" title="{{ a.name }}">{{ a.name }}</div><div class="mt-0.5 flex flex-wrap items-center gap-1.5">{{ a.file_meta() }}{% include "partials/attachment_chip.html" %}</div></div>
+{% include "partials/attachment_open.html" %}
+</article>
+{%- endfor %}

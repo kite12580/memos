@@ -138,6 +138,7 @@ pub fn for_memos(c: &Connection, ids: &[i64]) -> DbResult<HashMap<i64, Vec<Attac
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
+    All,
     Media,
     Audio,
     Documents,
@@ -147,15 +148,17 @@ pub enum Section {
 impl Section {
     pub fn parse(s: &str) -> Section {
         match s {
+            "media" => Section::Media,
             "audio" => Section::Audio,
             "documents" => Section::Documents,
             "unused" => Section::Unused,
-            _ => Section::Media,
+            _ => Section::All,
         }
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Section::All => "all",
             Section::Media => "media",
             Section::Audio => "audio",
             Section::Documents => "documents",
@@ -165,6 +168,7 @@ impl Section {
 
     fn condition(self) -> &'static str {
         match self {
+            Section::All => "a.memo_id IS NOT NULL",
             Section::Media => "a.memo_id IS NOT NULL AND a.kind IN ('image', 'video')",
             Section::Audio => "a.memo_id IS NOT NULL AND a.kind = 'audio'",
             Section::Documents => "a.memo_id IS NOT NULL AND a.kind = 'file'",

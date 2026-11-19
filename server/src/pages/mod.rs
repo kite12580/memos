@@ -126,7 +126,7 @@ pub fn page(app: &App, req: &Request, c: &Ctx, t: &impl Template) -> Response {
 pub struct Extras {
     pub attachments: HashMap<i64, Vec<atts::Attachment>>,
     pub reactions: HashMap<i64, Vec<String>>,
-    pub relations: HashMap<i64, (Vec<memos::MemoLink>, Vec<memos::MemoLink>)>,
+    pub relations: HashMap<i64, memos::Links>,
     pub comments: HashMap<i64, Vec<Memo>>,
 }
 
@@ -555,7 +555,9 @@ pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
         "{} · Memos",
         all[0].snippet.chars().take(60).collect::<String>().trim()
     );
+    cards.reverse();
     let sb = Sidebar {
+        active: "memo",
         memo: Some(v::MemoSide::new(&card, &all[0].html, cards.len())),
         ..Default::default()
     };

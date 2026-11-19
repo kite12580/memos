@@ -1,0 +1,9 @@
+{%- for a in lib.unused %}
+<article class="flex items-center gap-2.5 rounded-[18px] border border-mu-warning/30 bg-mu-warning-soft p-3" data-unused="{{ a.uid }}">
+{%- if a.is_image() %}<div class="overflow-hidden rounded-mu-xl bg-mu-well/35 h-10 w-10 shrink-0"><img src="{{ a.thumb }}" alt="{{ a.name }}" class="h-full w-full object-cover" loading="lazy" decoding="async"></div>
+{%- else if a.is_video() %}<div class="relative overflow-hidden rounded-mu-xl bg-mu-well/35 h-10 w-10 shrink-0">{% if a.thumb.is_empty() %}<video src="{{ a.href }}" preload="metadata" muted playsinline class="h-full w-full object-cover"></video>{% else %}<img src="{{ a.thumb }}" alt="{{ a.name }}" class="h-full w-full object-cover" loading="lazy" decoding="async">{% endif %}<span class="absolute bottom-2 right-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-mu-canvas/85 text-mu-text">{{ h::icon("play", "mu-icon-sm fill-current") }}</span></div>
+{%- else %}<div class="flex items-center justify-center rounded-mu-xl bg-mu-well/45 text-mu-text-secondary h-10 w-10 shrink-0">{% if a.is_audio() %}{{ h::icon("file-headphone", "mu-icon h-5 w-5") }}{% else %}{{ h::icon("file", "mu-icon h-5 w-5") }}{% endif %}</div>{% endif %}
+<div class="min-w-0 flex-1"><div class="truncate mu-label text-mu-text" title="{{ a.name }}">{{ a.name }}</div><div class="mt-0.5 flex flex-wrap items-center gap-1.5">{{ a.file_meta() }}{% include "partials/attachment_chip.html" %}</div></div>
+{% include "partials/attachment_open.html" %}
+</article>
+{%- endfor %}

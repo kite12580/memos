@@ -19,8 +19,12 @@ export function relative(date: Date, now = Date.now()): string {
   return dateFormat(date.getFullYear() === new Date(now).getFullYear()).format(date);
 }
 
-const monthFormat = new Intl.DateTimeFormat(lang, { month: "long", year: "numeric" });
-const shortFormat = new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" });
+const formats: Record<string, Intl.DateTimeFormat> = {
+  month: new Intl.DateTimeFormat(lang, { month: "long", year: "numeric" }),
+  short: new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" }),
+  date: new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", year: "numeric" }),
+  "month-short": new Intl.DateTimeFormat(lang, { month: "short", year: "numeric" }),
+};
 
 /** Formats the `<time>` elements the server wrote in English. */
 export function formatTimes(root: ParentNode = document) {
@@ -28,7 +32,7 @@ export function formatTimes(root: ParentNode = document) {
     const date = new Date(el.dateTime.length === 7 ? `${el.dateTime}-01T00:00:00` : el.dateTime);
     if (Number.isNaN(date.getTime())) continue;
     const fmt = el.dataset.fmt;
-    const text = fmt === "month" ? monthFormat.format(date) : fmt === "short" ? shortFormat.format(date) : relative(date);
+    const text = fmt && formats[fmt] ? formats[fmt].format(date) : relative(date);
     if (el.textContent !== text) el.textContent = text;
   }
 }

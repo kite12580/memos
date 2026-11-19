@@ -177,6 +177,11 @@ pub fn headings(html: &str) -> Vec<(u8, String, String)> {
     out.into_iter().map(|(_, l, id, t)| (l, id, t)).collect()
 }
 
+/// The `src` of each image in `html`, in order.
+pub fn image_sources(html: &str) -> Vec<String> {
+    start_tags(html, "img").filter_map(|t| attr(t, "src")).map(unescape).collect()
+}
+
 /// Plain text of the start of the memo, for link pickers and references.
 pub fn snippet(markdown: &str) -> String {
     const MAX: usize = 160;
@@ -198,6 +203,54 @@ pub fn snippet(markdown: &str) -> String {
         Some((i, _)) => format!("{}…", &out[..i]),
         None => out,
     }
+}
+
+/// The memo's readable text for a calendar day: its blocks a line each,
+/// without image text or raw HTML, cut at 280 characters. The flag says
+/// whether it starts with a code block.
+pub fn excerpt(markdown: &str) -> Option<(String, bool)> {
+    const MAX: usize = 280;
+    let opts = Options::ENABLE_TASKLISTS | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES;
+    let mut blocks: Vec<(String, bool)> = vec![];
+    let mut cur = String::new();
+    let mut code = false;
+    let mut image = 0;
+    let flush = |cur: &mut String, blocks: &mut Vec<(String, bool)>, code: bool| {
+        let text = cur.trim();
+        if !text.is_empty() {
+            blocks.push((text.to_string(), code));
+        }
+        cur.clear();
+    };
+    for ev in Parser::new_ext(markdown, opts) {
+        match ev {
+            Event::Start(Tag::Image { .. }) => image += 1,
+            Event::End(TagEnd::Image) => image -= 1,
+            Event::Start(Tag::CodeBlock(_)) => {
+                flush(&mut cur, &mut blocks, false);
+                code = true;
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                flush(&mut cur, &mut blocks, true);
+                code = false;
+            }
+            Event::Text(t) | Event::Code(t) if image == 0 => cur.push_str(&t),
+            Event::SoftBreak | Event::HardBreak => cur.push('\n'),
+            Event::Start(Tag::Paragraph | Tag::Heading { .. } | Tag::Item | Tag::List(_) | Tag::TableCell | Tag::BlockQuote(_))
+            | Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item | TagEnd::List(_) | TagEnd::TableCell | TagEnd::BlockQuote(_)) => {
+                flush(&mut cur, &mut blocks, code)
+            }
+            _ => {}
+        }
+    }
+    flush(&mut cur, &mut blocks, code);
+    let is_code = blocks.first()?.1;
+    let text = blocks.into_iter().map(|(t, _)| t).collect::<Vec<_>>().join("\n");
+    let text = match text.char_indices().nth(MAX) {
+        Some((i, _)) => format!("{}…", text[..i].trim_end()),
+        None => text,
+    };
+    Some((text, is_code))
 }
 
 /// Where a `#tag` may start and what it may hold, close to the editor's
@@ -246,7 +299,7 @@ fn push_text_with_tags(out: &mut String, text: &str) {
         out.push_str(&escape(&text[last..from]));
         let tag = &text[from + 1..to];
         out.push_str(&format!(
-            "<span data-tag=\"{}\" class=\"mbe-deco mbe-tag memo-tag\">{}</span>",
+            "<span data-tag=\"{}\" role=\"button\" tabindex=\"0\" class=\"mbe-deco mbe-tag m-tag mu-focus\">{}</span>",
             escape(tag),
             escape(&text[from..to])
         ));
@@ -291,7 +344,7 @@ pub fn fallback_html(markdown: &str) -> String {
                 Tag::Strikethrough => out.push_str("<del>"),
                 Tag::Link { dest_url, .. } => {
                     link_depth += 1;
-                    out.push_str(&format!("<a href=\"{}\" class=\"mbe-link\">", escape(&dest_url)));
+                    out.push_str(&format!("<a href=\"{}\" class=\"mbe-link m-link\">", escape(&dest_url)));
                 }
                 Tag::Image { dest_url, title, .. } => {
                     out.push_str(&format!("<img src=\"{}\" alt=\"{}\" loading=\"lazy\">", escape(&dest_url), escape(&title)));
@@ -333,7 +386,7 @@ pub fn fallback_html(markdown: &str) -> String {
             Event::Text(_) if image_depth > 0 => {}
             Event::Text(t) if code_depth == 0 && link_depth == 0 => push_text_with_tags(&mut out, &t),
             Event::Text(t) => out.push_str(&escape(&t)),
-            Event::Code(t) => out.push_str(&format!("<code>{}</code>", escape(&t))),
+            Event::Code(t) => out.push_str(&format!("<code class=\"m-code\">{}</code>", escape(&t))),
             Event::SoftBreak | Event::HardBreak => out.push_str("<br>"),
             Event::Rule => out.push_str("<div class=\"mbe-block mbe-divider\"><hr></div>"),
             Event::TaskListMarker(checked) => out.push_str(if checked {
@@ -476,6 +529,13 @@ mod tests {
     use super::*;
 
     const EDITOR_TASKS: &str = r#"<div dir="auto" data-list-type="task" data-indent="0" class="mbe-block mbe-list-item mbe-lazy"><span class="mbe-marker" contenteditable="false"><input class="mbe-checkbox" type="checkbox" tabindex="0" aria-label="one"></span><div class="mbe-content" data-content="">one</div></div><div dir="auto" data-list-type="task" data-indent="0" class="mbe-block mbe-list-item mbe-checked mbe-lazy"><span class="mbe-marker" contenteditable="false"><input class="mbe-checkbox" type="checkbox" tabindex="0" aria-label="two" checked=""></span><div class="mbe-content" data-content="">two <span data-tag="a&amp;b" class="mbe-deco mbe-tag">#a&amp;b</span></div></div>"#;
+
+    #[test]
+    fn excerpts() {
+        assert_eq!(excerpt("# Title\nsome *text* ![alt](x.png)\n- a\n- b"), Some(("Title\nsome text\na\nb".into(), false)));
+        assert_eq!(excerpt("```\nfn x\n```\nafter"), Some(("fn x\nafter".into(), true)));
+        assert_eq!(excerpt("![only](x.png)"), None);
+    }
 
     #[test]
     fn derives_from_editor_html() {

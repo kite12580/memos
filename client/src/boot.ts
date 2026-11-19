@@ -4,10 +4,12 @@
 
 import { $, $$, fromHTML, idle, post, request } from "./lib/dom";
 import { formatTimes } from "./lib/time";
-import { closeAll, closeDialog, initPopups, isOpenFor, openDialog, openPopup, openTemplate } from "./lib/popup";
+import { closeAll, closeDialog, enter, initPopups, isOpenFor, openDialog, openPopup, openTemplate } from "./lib/popup";
 import * as cards from "./lib/cards";
 import { initList } from "./lib/list";
 import { toastError } from "./lib/toast";
+import { initTooltips } from "./lib/tooltip";
+import { icon } from "./lib/icon";
 
 declare const RENDER_VERSION: string;
 
@@ -40,7 +42,7 @@ function openSelect(trigger: HTMLElement) {
     item.setAttribute("aria-selected", String(selected));
     if (selected) item.setAttribute("data-selected", "");
     Object.assign(item.dataset, opt.dataset);
-    item.innerHTML = `<div class="mu-select-item-text"></div><span class="mu-select-indicator">${selected ? '<svg class="lucide lucide-check" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="${document.body.dataset.sprite}#i-check"/></svg>' : ""}</span>`;
+    item.innerHTML = `<div class="mu-select-item-text"></div><span class="mu-select-indicator">${selected ? icon("check", "") : ""}</span>`;
     item.firstElementChild!.textContent = opt.textContent;
     listbox.append(item);
   }
@@ -48,34 +50,76 @@ function openSelect(trigger: HTMLElement) {
   openPopup(trigger, popup, "bottom", "start");
 }
 
+/** Slides a segmented control's key under its pressed button, as the package's toggle group does. */
+function keySegmented(group: HTMLElement) {
+  const pressed = $<HTMLElement>("[data-pressed]", group);
+  if (!pressed) return;
+  group.style.setProperty("--key-left", `${pressed.offsetLeft}px`);
+  group.style.setProperty("--key-width", `${pressed.offsetWidth}px`);
+}
+
+const SYNTAX = /(^|\s)-?(#|is:|has:|before:|after:|on:|")/;
+
+/** memos' search dialog: Text searches the words, Expression reads the search syntax. */
 function openSearch() {
   openDialog("tpl-search", (root) => {
     const input = $<HTMLInputElement>("input[name=q]", root)!;
+    const group = $("[data-segmented]", root)!;
+    const hints = $("[data-search-hints]", root)!;
     input.value = new URLSearchParams(location.search).get("q") ?? "";
+    let mode = SYNTAX.test(input.value) ? "expression" : (localStorage.getItem("memos-lite-search") ?? "text");
+    const setMode = (m: string) => {
+      mode = m;
+      localStorage.setItem("memos-lite-search", m);
+      for (const b of $$<HTMLElement>("[data-mode]", group)) {
+        b.toggleAttribute("data-pressed", b.dataset.mode === m);
+        b.setAttribute("aria-pressed", String(b.dataset.mode === m));
+      }
+      hints.hidden = m !== "expression";
+      requestAnimationFrame(() => keySegmented(group));
+    };
+    setMode(mode);
     root.addEventListener("click", (e) => {
-      const hint = (e.target as HTMLElement).closest<HTMLElement>("[data-action=search-hint]");
+      const target = e.target as HTMLElement;
+      const m = target.closest<HTMLElement>("[data-mode]");
+      if (m) return setMode(m.dataset.mode!);
+      const hint = target.closest<HTMLElement>("[data-action=search-hint]");
       if (!hint) return;
-      const v = hint.dataset.value!;
-      input.value = `${input.value.trimEnd()}${input.value.trim() ? " " : ""}${v}`;
+      input.value = `${input.value.trimEnd()}${input.value.trim() ? " " : ""}${hint.dataset.value}`;
       input.focus();
+    });
+    $("form", root)!.addEventListener("submit", () => {
+      if (mode === "text") input.value = input.value.split(/\s+/).filter(Boolean).map((w) => `"${w.replaceAll('"', "")}"`).join(" ");
     });
   });
 }
 
+/** On phones the sidebar opens in memos' left drawer. */
 function openDrawer() {
   const sidebar = $("#sidebar")!;
-  const backdrop = document.createElement("div");
-  backdrop.className = "mu-dialog-backdrop md:hidden";
-  backdrop.dataset.open = "";
+  const aside = $("aside", sidebar)!;
+  const root = document.createElement("div");
+  root.innerHTML =
+    '<div class="mu-drawer-backdrop" role="presentation"></div><div class="mu-drawer-viewport mu-drawer-left" role="presentation"><div role="dialog" class="mu-drawer-popup mu-drawer-bare mu-base mu-s-md w-72 max-w-[calc(100%-2rem)]"><div class="mu-drawer-content"></div></div></div>';
+  const backdrop = root.firstElementChild as HTMLElement;
+  const viewport = root.lastElementChild as HTMLElement;
+  const popup = viewport.firstElementChild as HTMLElement;
+  popup.firstElementChild!.append(aside);
+  document.body.append(root);
+  document.body.style.overflow = "hidden";
+  enter(backdrop);
+  enter(popup);
   const close = () => {
-    sidebar.classList.add("max-md:hidden");
-    sidebar.classList.remove("shadow-lg");
-    backdrop.remove();
+    sidebar.prepend(aside);
+    root.remove();
+    document.body.style.overflow = "";
+    removeEventListener("keydown", onKey);
   };
-  backdrop.addEventListener("click", close);
-  sidebar.before(backdrop);
-  sidebar.classList.remove("max-md:hidden");
-  sidebar.classList.add("shadow-lg");
+  const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+  addEventListener("keydown", onKey);
+  viewport.addEventListener("click", (e) => {
+    if (e.target === viewport || (e.target as HTMLElement).closest("a[href]")) close();
+  });
 }
 
 async function showMonth(month: string) {
@@ -146,6 +190,9 @@ async function onAction(el: HTMLElement, e: MouseEvent) {
       return playAudio(el);
     case "dialog-cancel":
       return closeDialog(el);
+    case "unblur":
+      el.closest("[data-slot=memo-body]")?.firstElementChild?.classList.remove("blur-lg");
+      return el.parentElement!.remove();
     case "new-memo": {
       const composer = $("[data-composer=create]");
       if (!composer) return;
@@ -199,13 +246,19 @@ function onPopup(trigger: HTMLElement) {
     case "brand":
       return openTemplate(trigger, "tpl-brand", "bottom", "start");
     case "display":
-      return openTemplate(trigger, "tpl-display", "bottom", "start");
+      return openTemplate(trigger, "tpl-display", "bottom", "start", (p) => requestAnimationFrame(() => keySegmented($("[data-segmented]", p)!)), trigger.parentElement!);
     case "tags-menu":
       return openTemplate(trigger, "tpl-tags-menu", "bottom", "end");
     case "search":
       return openSearch();
     case "reactions":
-      return import("./reactions").then((r) => r.openPicker(trigger, (emoji) => currentCard && cards.react(currentCard, emoji)));
+      return import("./reactions").then((r) =>
+        r.openPicker(
+          trigger,
+          currentCard ? $$<HTMLElement>("[data-action=react]", currentCard).map((b) => b.dataset.emoji!) : [],
+          (emoji) => currentCard && cards.react(currentCard, emoji),
+        ),
+      );
     case "insert-menu":
       return editor().then((m) => m.openInsertMenu(trigger));
     case "share":
@@ -279,6 +332,7 @@ const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 if (tz && !document.cookie.includes(`tz=${encodeURIComponent(tz)}`)) void setPref("tz", tz, false);
 
 initPopups();
+initTooltips();
 formatTimes();
 cards.initClamps();
 initList();
@@ -286,3 +340,12 @@ initResize();
 renderStale();
 document.addEventListener("memos:cards", renderStale);
 if (location.hash === "#compose") $("[data-composer=create] [contenteditable]")?.focus();
+
+const pages: Record<string, () => Promise<unknown>> = {
+  calendar: () => import("./pages/calendar"),
+  attachments: () => import("./pages/attachments"),
+  views: () => import("./pages/views"),
+  settings: () => import("./pages/settings"),
+};
+const page = $("[data-page]")?.dataset.page;
+if (page) void pages[page]?.();

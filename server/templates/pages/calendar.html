@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block main %}
+<section class="@container flex min-h-full w-full flex-col items-center">
+<div class="mx-auto w-full px-4 pb-8 pt-3 sm:px-6 md:pt-6">
+<section class="flex w-full min-w-0 flex-col gap-1 xl:h-[calc(100dvh-3.5rem)]" data-page="calendar" data-month="{{ cal.key }}" data-current="{{ cal.current }}" data-empty="{{ c.t.s("calendar.no-memos-on-day") }}">
+<header class="flex h-9 shrink-0 items-center ps-px">
+<h1 class="min-w-0"><button type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="{{ c.t.s("calendar.select-month") }}" data-month-picker="" class="mu-popover-trigger mu-button mu-button-ghost mu-base mu-s-md mu-focus mu-heading text-mu-text"><time data-fmt="month" datetime="{{ cal.key }}">{{ cal.title }}</time></button></h1>
+<div class="ms-auto flex items-center gap-0.5 pointer-coarse:gap-4">
+<a aria-label="{{ c.t.s("common.previous-month") }}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus" href="{{ cal.prev }}">{{ h::icon("chevron-left", "mu-icon rtl:rotate-180") }}</a>
+<a aria-label="{{ c.t.s("common.next-month") }}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus" href="{{ cal.next }}">{{ h::icon("chevron-right", "mu-icon rtl:rotate-180") }}</a>
+<a class="mu-button mu-button-ghost mu-base mu-s-sm mu-focus ms-1.5" href="{{ cal.today_href }}"><span class="mu-button-label">{{ c.t.s("common.today") }}</span></a>
+</div>
+</header>
+<div role="group" aria-label="{{ cal.title }}" class="flex min-h-0 w-full flex-1 flex-col">
+<div class="grid grid-cols-7 px-px" aria-hidden="true">
+{%- for d in cal.weekdays %}<div class="flex h-8 items-end px-3 pb-1.5"><span class="leading-none mu-caption text-mu-text-secondary">{{ d }}</span></div>{% endfor %}
+</div>
+<div class="grid auto-rows-fr grid-cols-7 overflow-hidden rounded-mu-lg border border-mu-line/70 bg-mu-surface md:[grid-auto-rows:9rem] xl:min-h-0 xl:flex-1 xl:[grid-auto-rows:minmax(5.5rem,1fr)]" data-cells="">
+{%- for d in cal.days %}
+<a data-calendar-date="{{ d.date }}" tabindex="{% if d.focus %}0{% else %}-1{% endif %}" aria-label="{{ d.label }}" class="{{ d.class }}" href="{{ d.href }}"><span class="flex h-6 shrink-0 items-center"><span class="mu-caption tabular-nums {{ d.numeral }}" data-numeral="">{{ d.day }}</span></span>
+{%- if d.in_month && d.has_memos %}<span aria-hidden="true" class="flex h-4 shrink-0 items-center md:hidden" data-mark="">{% if let Some(src) = d.images.first() %}<img src="{{ src }}" alt="" loading="lazy" decoding="async" class="size-4 shrink-0 rounded-[3px] object-cover">{% else %}<span class="flex flex-col gap-[3px] text-mu-text-secondary/45 transition-colors group-hover/day:text-mu-text-secondary"><span class="h-0.5 w-4 rounded-full bg-current"></span><span class="h-0.5 w-2.5 rounded-full bg-current"></span></span>{% endif %}</span>{% endif %}
+{%- if d.in_month && (d.excerpt.is_some() || !d.images.is_empty()) %}<span aria-hidden="true" class="mt-1 flex min-w-0 flex-col gap-1 max-md:hidden" data-preview="">
+{%- if let Some(text) = d.excerpt %}<span class="overflow-hidden whitespace-pre-line break-words mu-caption [display:-webkit-box] [-webkit-box-orient:vertical] text-mu-text-secondary transition-colors group-hover/day:text-mu-text{% if d.code %} font-mono mu-caption{% endif %}" style="-webkit-line-clamp: {{ d.clamp() }};" data-excerpt="">{{ text }}</span>{% endif %}
+{%- if !d.images.is_empty() %}<span class="flex gap-1">{% for src in d.images %}<img src="{{ src }}" alt="" loading="lazy" decoding="async" class="size-9 shrink-0 rounded-mu-md object-cover">{% endfor %}</span>{% endif -%}
+</span>{% endif -%}
+</a>
+{%- endfor %}
+</div>
+</div>
+{%- if let Some((before, after)) = cal.empty %}
+<p class="mt-2 shrink-0 text-center mu-caption text-mu-text-secondary max-md:hidden">{{ before }}<time data-fmt="month" datetime="{{ cal.key }}">{{ cal.title }}</time>{{ after }}</p>
+{%- endif %}
+</section>
+</div>
+</section>
+<template id="tpl-month-picker"><div role="dialog" aria-label="{{ c.t.s("calendar.select-month") }}" class="mu-popover-popup mu-popup mu-popup-motion mu-base mu-s-md w-60">
+<div class="mb-1 flex items-center"><button type="button" aria-label="{{ c.t.s("calendar.previous-year") }}" data-year="-1" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus">{{ h::icon("chevron-left", "mu-icon rtl:rotate-180") }}</button><span class="flex-1 text-center mu-label-sm tabular-nums text-mu-text" data-year-label="">{{ cal.year }}</span><button type="button" aria-label="{{ c.t.s("calendar.next-year") }}" data-year="1" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus">{{ h::icon("chevron-right", "mu-icon rtl:rotate-180") }}</button></div>
+<div class="grid grid-cols-3 gap-0.5">
+{%- for m in cal.months() %}<a{% if m.shown %} aria-current="page"{% endif %} class="mu-button mu-button-ghost mu-base mu-s-sm mu-focus relative text-mu-text" href="{{ c.base }}/calendar/{{ m.key }}">{{ m.name }}{% if m.current %}<span aria-hidden="true" class="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-mu-primary"></span>{% endif %}</a>{% endfor %}
+</div>
+</div></template>
+{% endblock %}

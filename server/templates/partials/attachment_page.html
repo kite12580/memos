@@ -1,0 +1,5 @@
+{%- if !lib.media.is_empty() %}<div data-part="media">{% include "partials/attachment_media.html" %}</div>{% endif %}
+{%- if !lib.documents.is_empty() %}<div data-part="documents">{% include "partials/attachment_documents.html" %}</div>{% endif %}
+{%- if !lib.audio.is_empty() %}<div data-part="audio">{% include "partials/attachment_audio.html" %}</div>{% endif %}
+{%- if !lib.unused.is_empty() %}<div data-part="unused">{% include "partials/attachment_unused.html" %}</div>{% endif %}
+{% include "partials/attachment_more.html" %}

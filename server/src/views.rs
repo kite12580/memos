@@ -2,7 +2,8 @@
 //! built from store rows.
 
 use crate::db::attachments::{Attachment, Kind};
-use crate::db::memos::{Memo, MemoLink};
+use crate::db::memos::Memo;
+use crate::db::views::TagMeta;
 use crate::h::{self, Html};
 use crate::http::{Request, encode_component};
 use crate::i18n::T;
@@ -103,6 +104,47 @@ impl Prefs {
     }
 }
 
+/// The tag settings as the stylesheet every page carries: custom colors
+/// and the tags whose memos are blurred. A setting covers the tag's children.
+#[derive(Default)]
+pub struct TagStyles {
+    pub meta: Vec<TagMeta>,
+    pub css: String,
+}
+
+fn css_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"").replace('<', "\\3c ")
+}
+
+impl TagStyles {
+    pub fn new(meta: Vec<TagMeta>) -> TagStyles {
+        let mut css = String::new();
+        let mut colored = vec![];
+        for m in meta.iter().filter(|m| !m.color.is_empty()) {
+            let t = css_string(&m.tag);
+            let sel = format!(r#".mbe-tag[data-tag="{t}"],.mbe-tag[data-tag^="{t}/"]"#);
+            css.push_str(&format!("{sel}{{--tag-color:{}}}", m.color));
+            colored.push(sel);
+        }
+        if !colored.is_empty() {
+            let sel = colored.join(",");
+            css.push_str(&format!(
+                ":is({sel}):not(.mbe-source-mode *){{--tag-tint:color(from oklch(from var(--tag-color) clamp(0.5,l,0.75) c h) srgb clamp(0,r,1) clamp(0,g,1) clamp(0,b,1));background-color:color-mix(in srgb,var(--tag-tint) 18%,transparent)}}\
+                 :is({sel})[role=button]:not(.mbe-source-mode *):hover{{background-color:color-mix(in srgb,var(--tag-tint) 26%,transparent)}}"
+            ));
+        }
+        TagStyles { meta, css }
+    }
+
+    /// Whether a memo, by the tags in its HTML, is one to blur.
+    pub fn blurs(&self, html: &str) -> bool {
+        self.meta.iter().any(|m| {
+            let t = h::escape(&m.tag);
+            m.blur && (html.contains(&format!("data-tag=\"{t}\"")) || html.contains(&format!("data-tag=\"{t}/")))
+        })
+    }
+}
+
 /// Everything every page needs.
 pub struct Ctx<'a> {
     pub t: T,
@@ -118,6 +160,7 @@ pub struct Ctx<'a> {
     /// The search box's text.
     pub q: String,
     pub now: i64,
+    pub tags: std::sync::Arc<TagStyles>,
 }
 
 pub const SEARCH_HINTS: [&str; 9] = ["#", "is:pinned", "has:task", "has:todo", "has:link", "has:code", "has:image", "after:", "before:"];
@@ -260,11 +303,12 @@ impl ViewRow {
     }
 }
 
-/// The Lucide icons a view can pick; the sprite carries each of them.
+/// The Lucide icons a view can pick, memos' CUSTOM_SYMBOLS; the sprite carries each of them.
 pub const VIEW_ICONS: &[&str] = &[
-    "funnel", "star", "bookmark", "briefcase", "book-open", "lightbulb", "heart", "flag", "inbox",
-    "calendar", "clock", "list-todo", "code", "image", "link", "music", "camera", "map-pin", "pen-line",
-    "sparkles", "flame", "leaf", "coffee", "house", "graduation-cap", "rocket", "target", "archive",
+    "astroid", "book-open", "briefcase", "camera", "chart-no-axes-combined", "check-check", "code", "coffee",
+    "compass", "earth", "feather", "flask-conical", "flower-2", "folder", "gem", "graduation-cap", "heart",
+    "house", "leaf", "lightbulb", "map-pin", "mountain", "music", "notebook-pen", "palette", "pencil", "plane",
+    "rocket", "sprout", "star", "sun", "target", "tent", "trophy", "users", "utensils", "wrench", "zap",
 ];
 
 pub struct TagRow {
@@ -536,6 +580,7 @@ pub struct Card {
     pub comments: Vec<CommentRow>,
     pub comment_count: i64,
     pub in_list: bool,
+    pub blurred: bool,
 }
 
 impl Card {
@@ -694,7 +739,7 @@ fn estimate(m: &Memo, visuals: usize, rows: usize) -> i64 {
 pub struct CardData<'a> {
     pub attachments: &'a HashMap<i64, Vec<Attachment>>,
     pub reactions: &'a HashMap<i64, Vec<String>>,
-    pub relations: &'a HashMap<i64, (Vec<MemoLink>, Vec<MemoLink>)>,
+    pub relations: &'a HashMap<i64, crate::db::memos::Links>,
     pub comments: &'a HashMap<i64, Vec<Memo>>,
 }
 
@@ -785,6 +830,7 @@ pub fn card(c: &Ctx, m: &Memo, d: &CardData, in_list: bool) -> Card {
         comments,
         comment_count: m.comment_count,
         in_list,
+        blurred: c.tags.blurs(&m.html),
     }
 }
 
