@@ -20,12 +20,14 @@ export function layoutGrid() {
 function append(cards: HTMLElement[]) {
   const l = list()!;
   const cols = $$("[data-col]", l);
+  let index = Math.max(-1, ...$$("[data-i]", l).map((e) => Number(e.dataset.i))) + 1;
   for (const card of cards) {
     if (!cols.length) {
       l.append(card);
       continue;
     }
     card.classList.remove("mb-2");
+    card.dataset.i = String(index++);
     cols.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a)).append(card);
   }
 }
