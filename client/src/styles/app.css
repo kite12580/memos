@@ -1,0 +1,112 @@
+@layer theme, base, mu, components, utilities;
+@import "tailwindcss" source(none);
+@import "@usememos/ui/tokens.css";
+@import "@usememos/ui/styles.css";
+@import "@usememos/ui/tailwind.css";
+@import "@usememos/editor/style.css";
+@import "./themes/default.css";
+@import "./themes/paper.css";
+@import "./composer.css";
+
+@source "../../../server/templates";
+@source "../../../server/src";
+@source "../";
+
+/*
+ * Rich text in the memo editor: everything outside its source mode, which shows the
+ * Markdown as text (the editor marks its root `.mbe-source-mode`).
+ */
+@custom-variant rich (&:not(.mbe-source-mode *));
+/* The package switches themes with data-theme, so `dark:` follows the app's choice, not the OS. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@layer base {
+  * {
+    @apply border-mu-line outline-none ring-0;
+    scrollbar-color: color-mix(in oklch, var(--mu-text-secondary) 55%, transparent) transparent;
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklch, var(--mu-text-secondary) 45%, transparent);
+    border-radius: 999px;
+  }
+
+  body {
+    @apply bg-mu-canvas text-mu-text;
+  }
+}
+
+@layer components {
+  @media (prefers-reduced-motion: no-preference) {
+    .memos-logo .memos-mark {
+      transition: transform 180ms ease-out;
+    }
+
+    .memos-brand-trigger:is(:hover, :focus-visible) .memos-mark,
+    .memos-logo:hover .memos-mark {
+      transform: translateY(-1px) rotate(-6deg);
+    }
+  }
+
+  /* The editor's theme, set once here instead of on every memo's root element (MEMO_EDITOR_THEME). */
+  .memo-content-root,
+  .memo-editor-root {
+    --mbe-text-light: var(--mu-text);
+    --mbe-muted-light: var(--mu-text-secondary);
+    --mbe-bg-light: transparent;
+    --mbe-accent-light: var(--mu-accent);
+    --mbe-link-light: var(--mu-accent);
+    --mbe-code-bg-light: var(--mu-well);
+    --mbe-border-light: var(--mu-line);
+    --mbe-popup-bg-light: var(--mu-surface);
+    --mbe-popup-border-light: var(--mu-line);
+    --mbe-hover-light: var(--mu-hover);
+    --mbe-danger-light: var(--mu-danger);
+    --mbe-callout-note-light: var(--mu-accent);
+    --mbe-callout-tip-light: var(--mu-success);
+    --mbe-callout-important-light: var(--mu-accent);
+    --mbe-callout-warning-light: var(--mu-warning);
+    --mbe-callout-caution-light: var(--mu-danger);
+    --mbe-text-dark: var(--mu-text);
+    --mbe-muted-dark: var(--mu-text-secondary);
+    --mbe-bg-dark: transparent;
+    --mbe-accent-dark: var(--mu-accent);
+    --mbe-link-dark: var(--mu-accent);
+    --mbe-code-bg-dark: var(--mu-well);
+    --mbe-border-dark: var(--mu-line);
+    --mbe-popup-bg-dark: var(--mu-surface);
+    --mbe-popup-border-dark: var(--mu-line);
+    --mbe-hover-dark: var(--mu-hover);
+    --mbe-danger-dark: var(--mu-danger);
+    --mbe-callout-note-dark: var(--mu-accent);
+    --mbe-callout-tip-dark: var(--mu-success);
+    --mbe-callout-important-dark: var(--mu-accent);
+    --mbe-callout-warning-dark: var(--mu-warning);
+    --mbe-callout-caution-dark: var(--mu-danger);
+    --mbe-font: inherit;
+    --mbe-mono: var(--mu-font-mono);
+    --mbe-font-size: 16px;
+    --mbe-line-height: 24px;
+    --mbe-radius: var(--mu-radius-md);
+    --mbe-block-gap: 12px;
+    color-scheme: inherit;
+  }
+
+  /* Highlighted code saves both schemes' colors as variables (editor/render.ts). */
+  .memos-code-token {
+    color: var(--hl);
+  }
+  [data-theme="dark"] .memos-code-token {
+    color: var(--hd, var(--hl));
+  }
+}

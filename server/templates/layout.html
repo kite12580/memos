@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="{{ c.t.lang }}" dir="{{ c.t.dir() }}" class="" data-theme="{{ c.theme }}">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f0f0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" type="image/svg+xml" href="{{ c.base }}/favicon.svg">
+<title>{% block title %}Memos{% endblock %}</title>
+{%- if c.system_theme %}
+<script>matchMedia("(prefers-color-scheme: dark)").matches&&document.documentElement.setAttribute("data-theme","dark")</script>
+{%- endif %}
+<link rel="stylesheet" href="{{ c.base }}/{{ c.css }}">
+<link rel="preload" href="{{ c.base }}/{{ c.sprite }}" as="image" type="image/svg+xml">
+<script type="module" src="{{ c.base }}/{{ c.boot }}"></script>
+{%- for p in c.preload %}
+<link rel="modulepreload" href="{{ c.base }}/{{ p }}">
+{%- endfor %}
+</head>
+<body class="text-base w-full min-h-svh" data-base="{{ c.base }}" data-sprite="{{ c.base }}/{{ c.sprite }}">
+<div id="root" class="relative w-full min-h-full">
+<div class="w-full bg-mu-canvas min-h-full" style="--app-sidebar-width: {{ c.prefs.sidebar_width }}px;">
+{% include "partials/sidebar.html" %}
+<main class="flex w-full min-w-0 flex-col items-center md:ps-(--app-sidebar-width) min-h-full">
+<header class="sticky top-0 z-20 flex h-12 w-full shrink-0 items-center justify-start gap-1 border-b border-mu-line/70 bg-mu-canvas/90 px-2 backdrop-blur-md md:hidden">
+<button type="button" aria-label="{{ c.t.s("common.open-navigation") }}" data-action="drawer" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-md mu-focus">{{ h::icon("menu", "") }}</button>
+<button type="button" aria-haspopup="dialog" aria-expanded="false" data-popup="brand" title="Memos" class="mu-popover-trigger memos-brand-trigger text-start transition-colors hover:bg-mu-hover/65 border border-transparent mu-focus focus-visible:border-mu-focus min-w-0 items-center flex h-9 gap-1.5 rounded-mu-md px-1 max-w-[12rem]"><div class="memos-logo w-fit min-w-0 max-w-full"><span class="flex min-w-0 items-center text-mu-text gap-2">{{ h::mark(18, 28) }}<span class="min-w-0 truncate text-lg font-serif font-semibold leading-[1.25] tracking-[-0.015em]">Memos</span></span></div>{{ h::icon("chevrons-up-down", "mu-icon-sm shrink-0 text-mu-text-secondary/70") }}</button>
+</header>
+{% block main %}{% endblock %}
+</main>
+</div>
+</div>
+{% include "partials/popups.html" %}
+</body>
+</html>

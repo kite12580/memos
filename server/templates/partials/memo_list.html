@@ -1,0 +1,6 @@
+{%- for m in list.cards %}
+{% include "partials/card.html" %}
+{%- endfor %}
+{%- if let Some(next) = list.next %}
+<div data-next="{{ next }}" class="h-px w-full" aria-hidden="true"></div>
+{%- endif %}

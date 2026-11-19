@@ -1,0 +1,70 @@
+{%- if m.comments_strip() %}<div class="w-full mb-2" data-card="{{ m.uid }}" data-h="{{ m.estimate }}">{% endif -%}
+<article class="relative group flex flex-col justify-start items-start bg-mu-surface w-full px-4 py-3 gap-2 text-mu-text rounded-mu-lg border border-mu-line/70 transition-colors group/memo {% if m.comments_strip() %}mb-0 rounded-b-none{% else %}mb-2{% endif %}" tabindex="0" id="m-{{ m.uid }}"{% if !m.comments_strip() %} data-card="{{ m.uid }}" data-h="{{ m.estimate }}"{% endif %} data-rev="{{ m.rev }}"{% if m.stale %} data-stale=""{% endif %}{% if m.pinned %} data-pinned=""{% endif %}{% if m.archived %} data-archived=""{% endif %}{% if m.has_todo %} data-todo=""{% endif %}{% if m.has_task %} data-task=""{% endif %}>
+{%- if m.pinned %}<span role="img" aria-label="{{ c.t.s("memo.pinned") }}" class="absolute -right-px -top-px size-5 rounded-tr-mu-lg bg-mu-warning [clip-path:polygon(0_0,100%_0,100%_100%)] transition-[width,height] duration-160 ease-out pointer-fine:group-hover/memo:size-6 motion-reduce:transition-none"></span>{% endif %}
+<div class="flex h-6 w-full items-center justify-between gap-2">
+<div class="flex min-w-0 flex-1 items-center gap-2"><div data-slot="memo-header-meta" class="flex min-w-0 items-center gap-1.5 overflow-hidden"><a class="shrink-0 whitespace-nowrap rounded-mu-sm text-start mu-caption text-mu-text-secondary transition-colors select-none hover:text-mu-text border border-transparent mu-focus focus-visible:border-mu-focus underline-offset-2 hover:underline" href="{{ c.base }}/memos/{{ m.uid }}" title="{{ m.time_title }}">{% if m.updated_label %}{{ c.t.s("common.last-updated-at") }} {% endif %}<time datetime="{{ m.time_iso }}" data-rel="{{ m.time_mode }}">{{ m.time_text }}</time></a></div></div>
+<div data-slot="memo-header-actions" class="flex shrink-0 select-none flex-row items-center justify-end gap-1">
+{%- if !m.archived %}<span class="flex sm:hidden sm:group-hover:flex sm:group-focus-within:flex sm:has-[[data-popup-open]]:flex"><button type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="{{ c.t.s("memo.add-reaction") }}" data-popup="reactions" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus mu-popover-trigger">{{ h::icon("face-slightly-smiling-plus", "") }}</button></span>{% endif %}
+<button type="button" aria-label="{{ c.t.s("common.more") }}" aria-haspopup="menu" aria-expanded="false" data-popup="memo-menu" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus mu-menu-trigger">{{ h::icon("ellipsis-vertical", "") }}</button>
+</div>
+</div>
+<div class="w-full flex flex-col justify-start items-start gap-2">
+<div data-slot="memo-body" class="relative w-full">
+<div class="w-full flex flex-col justify-start items-start gap-2">
+<div class="relative w-full{% if m.clamp %} overflow-hidden max-h-[360px]{% endif %}"{% if c.prefs.compact_effective() %} data-clamp=""{% endif %}>
+<div class="w-full flex flex-col justify-start items-start gap-2">
+<div class="w-full flex flex-col justify-start items-start text-mu-text ">
+<div data-memo-content="true" class="relative w-full max-w-full wrap-break-word text-base leading-6"><div class="memo-content-root mbe-root mbe-readonly mbe-tasks" translate="no" aria-readonly="true">{{ m.html }}</div></div>
+</div>
+{%- if let Some(single) = m.gallery_single %}
+{%- if single.video %}
+<div class="relative overflow-hidden rounded-mu-md border border-mu-line/70 bg-mu-well/30 p-0 text-left transition-colors mu-focus focus-visible:border-mu-focus block w-full max-w-[30rem]"><div class="relative aspect-video bg-black/5"><video class="h-full w-full rounded-none object-cover" src="{{ single.full }}"{% if !single.thumb.is_empty() %} poster="{{ single.thumb }}"{% endif %} preload="none" controls playsinline></video></div></div>
+{%- else %}
+<div class="relative overflow-hidden rounded-mu-md border border-mu-line/70 bg-mu-well/30 p-0 text-left transition-colors mu-focus focus-visible:border-mu-focus inline-block max-w-full" role="button" tabindex="0" data-action="preview" data-src="{{ single.full }}"><div class="group/media relative h-full min-h-0 w-full overflow-hidden"><img src="{{ single.thumb }}" alt="{{ single.alt }}" class="block h-auto max-h-[20rem] w-auto max-w-full rounded-none transition-transform duration-300 group-hover/media:scale-[1.02]" loading="lazy" decoding="async"{% if let Some((w, hh)) = single.size %} width="{{ w }}" height="{{ hh }}"{% endif %}><div class="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-mu-text/15 via-transparent to-transparent opacity-0 transition-opacity group-hover/media:opacity-100" aria-hidden="true"></div></div></div>
+{%- endif %}
+{%- endif %}
+{%- if let Some(g) = m.gallery %}
+<div class="w-full {{ g.class }}">
+{%- for cell in g.cells %}
+<div class="relative overflow-hidden rounded-mu-md border border-mu-line/70 bg-mu-well/30 p-0 text-left transition-colors mu-focus focus-visible:border-mu-focus block h-full w-full {{ cell.class }}" role="button" tabindex="0" data-action="preview" data-src="{{ cell.full }}"{% if cell.video %} data-video=""{% endif %}><div class="group/media relative h-full min-h-0 w-full overflow-hidden">{% if cell.thumb.is_empty() %}<div class="h-full w-full bg-mu-well"></div>{% else %}<img alt="{{ cell.alt }}" class="h-full w-full rounded-none object-cover transition-transform duration-300 group-hover/media:scale-[1.02]" loading="lazy" decoding="async" src="{{ cell.thumb }}">{% endif %}<div class="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-mu-text/15 via-transparent to-transparent opacity-0 transition-opacity group-hover/media:opacity-100" aria-hidden="true"></div>{% if cell.video %}<span class="absolute flex items-center justify-center rounded-full bottom-2 right-2 z-[2] h-7 w-7 bg-mu-canvas/80 text-mu-text/70">{{ h::icon("play", "mu-icon-sm fill-current") }}</span>{% endif %}</div>{% if !cell.overlay.is_empty() %}<div class="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center bg-black/45 mu-heading text-white backdrop-blur-[2px]">{{ cell.overlay }}</div>{% endif %}</div>
+{%- endfor %}
+</div>
+{%- endif %}
+{%- if !m.audio.is_empty() || !m.files.is_empty() || !m.refs.is_empty() %}
+<div class="-mx-2 flex w-[calc(100%+1rem)] flex-col gap-0.5">
+{%- for a in m.audio %}
+<div class="group/row relative flex h-7 w-full min-w-0 items-center gap-1 rounded-mu-md px-2 text-start mu-caption text-mu-text-secondary transition-colors hover:bg-mu-hover hover:text-mu-text border border-transparent" data-audio="{{ a.href }}"><button type="button" data-action="audio" aria-label="{{ c.t.s("editor.audio-recorder.play-recording") }}" class="flex size-5 shrink-0 items-center justify-center rounded-mu-sm mu-focus">{{ h::icon("play", "mu-icon-sm me-auto shrink-0") }}</button><span class="min-w-0 flex-1 truncate text-mu-text">{{ a.name }}</span><span class="shrink-0 mu-caption tabular-nums text-mu-text-secondary hidden items-center gap-1 sm:flex"><span class="flex items-center gap-1"><span>{{ a.ext }}</span></span><span class="flex items-center gap-1"><span class="text-mu-text-secondary/40">·</span><span>{{ a.size }}</span></span></span></div>
+{%- endfor %}
+{%- for f in m.files %}
+<a href="{{ f.href }}" download="" title="{{ c.t.s("common.download") }} {{ f.name }}" class="group/row relative flex h-7 w-full min-w-0 items-center gap-1 rounded-mu-md px-2 text-start mu-caption text-mu-text-secondary transition-colors hover:bg-mu-hover hover:text-mu-text aria-pressed:bg-mu-hover aria-pressed:text-mu-text data-popup-open:bg-mu-hover data-popup-open:text-mu-text border border-transparent mu-focus focus-visible:border-mu-focus"><span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">{{ h::icon("file", "mu-icon-sm me-auto shrink-0") }}</span><span class="min-w-0 flex-1 truncate text-mu-text">{{ f.name }}</span><span class="shrink-0 mu-caption tabular-nums text-mu-text-secondary transition-opacity md:group-hover/row:opacity-0 md:group-focus-within/row:opacity-0 hidden items-center gap-1 sm:flex"><span class="flex items-center gap-1"><span>{{ f.ext }}</span></span><span class="flex items-center gap-1"><span class="text-mu-text-secondary/40">·</span><span>{{ f.size }}</span></span></span>{{ h::icon("download", "mu-icon-sm absolute end-2 opacity-0 transition-opacity md:group-hover/row:opacity-75 md:group-focus-within/row:opacity-75") }}</a>
+{%- endfor %}
+{%- for r in m.refs %}
+<a class="group/row relative flex h-7 w-full min-w-0 items-center gap-1 rounded-mu-md px-2 text-start mu-caption text-mu-text-secondary transition-colors hover:bg-mu-hover hover:text-mu-text aria-pressed:bg-mu-hover aria-pressed:text-mu-text data-popup-open:bg-mu-hover data-popup-open:text-mu-text border border-transparent mu-focus focus-visible:border-mu-focus" title="{{ r.title }}" href="{{ c.base }}/memos/{{ r.uid }}"><span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">{{ h::icon(r.icon, "mu-icon-sm me-auto shrink-0") }}</span><span class="min-w-0 flex-1 truncate">{{ r.snippet }}</span><span class="shrink-0 mu-caption tabular-nums text-mu-text-secondary transition-opacity md:group-hover/row:opacity-0 md:group-focus-within/row:opacity-0 hidden items-center gap-1 sm:flex"><span class="flex items-center gap-1"><span><time datetime="{{ r.date_iso }}" data-fmt="short">{{ r.date }}</time></span></span></span></a>
+{%- endfor %}
+</div>
+{%- endif %}
+</div>
+{%- if m.clamp %}<div class="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-linear-to-t from-mu-surface from-0% via-mu-surface/60 via-40% to-transparent to-100%" data-fade=""></div>{% endif %}
+</div>
+{%- if m.clamp %}<button type="button" aria-expanded="false" data-action="clamp" class="mu-button mu-button-ghost mu-base mu-s-sm mu-focus"><span class="mu-button-label">{{ c.t.s("memo.show-more") }}</span>{{ h::icon("chevron-down", "") }}</button>{% endif %}
+</div>
+</div>
+{%- if !m.reactions.is_empty() %}
+<div class="flex w-full flex-row flex-wrap items-center justify-start gap-1 select-none">
+{%- for e in m.reactions %}<button type="button" data-pressed="" aria-pressed="true" data-action="react" data-emoji="{{ e }}" class="mu-toggle mu-toggle-soft mu-toggle-pill mu-base mu-s-sm mu-focus shrink-0"><span class="mu-toggle-label"><span class="inline-flex items-center gap-1"><span class="mu-body">{{ e }}</span><span class="mu-caption tabular-nums">1</span></span></span></button>{% endfor %}
+{%- if !m.archived %}<button type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="{{ c.t.s("memo.add-reaction") }}" data-popup="reactions" class="mu-button mu-button-ghost mu-button-pill mu-button-icon mu-base mu-s-sm mu-focus mu-popover-trigger">{{ h::icon("face-slightly-smiling-plus", "") }}</button>{% endif %}
+</div>
+{%- endif %}
+</div>
+</article>
+{%- if m.comments_strip() %}
+<section aria-label="{{ c.t.s("memo.comment.self") }}" class="rounded-b-mu-lg border border-t-0 border-mu-line/70 px-4 py-1"><div class="-mx-2 flex w-[calc(100%+1rem)] flex-col gap-0">
+{%- for cm in m.comments %}
+<a class="group/row relative flex w-full min-w-0 items-center gap-1 rounded-mu-md px-2 text-start mu-caption text-mu-text-secondary transition-colors hover:bg-mu-hover hover:text-mu-text border border-transparent mu-focus focus-visible:border-mu-focus h-6" href="{{ c.base }}/memos/{{ m.uid }}#{{ cm.uid }}"><span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">{{ h::avatar("size-4") }}</span><div class="pointer-events-none flex items-center gap-2 leading-tight min-w-0 flex-1"><div class="min-w-0 truncate mu-caption text-mu-text-secondary">{{ cm.snippet }}</div></div></a>
+{%- endfor %}
+{%- if m.comment_count > 3 %}
+<a class="group/row relative flex w-full min-w-0 items-center gap-1 rounded-mu-md px-2 text-start mu-caption text-mu-text-secondary transition-colors hover:bg-mu-hover hover:text-mu-text border border-transparent mu-focus focus-visible:border-mu-focus h-6" href="{{ c.base }}/memos/{{ m.uid }}#memo-comments">{{ c.t.n("memo.comment.view-all-count", m.comment_count) }}</a>
+{%- endif %}
+</div></section>
+</div>
+{%- endif %}

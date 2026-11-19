@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block main %}
+<section class="@container flex min-h-full w-full flex-col items-center">
+<div class="mx-auto w-full px-4 pb-8 pt-3 sm:px-6 md:pt-6">
+<div class="w-full min-h-full bg-mu-canvas text-mu-text">
+<div class="w-full">
+<div class="flex flex-col justify-start w-full mx-auto {% if c.prefs.wide_list() %}max-w-none{% else %}max-w-2xl{% endif %}">
+{%- if !heading.is_empty() %}
+<div class="mb-3 flex w-full items-center gap-2 px-1"><h1 class="mu-title text-mu-text">{{ heading }}</h1></div>
+{%- endif %}
+<div id="memo-list" data-layout="{{ c.prefs.layout }}"{% if c.prefs.full_width %} data-full=""{% endif %} data-list="{{ list_url }}">
+<div data-leading="" class="flex w-full flex-col">
+{%- if let Some(composer) = composer %}
+{% include "partials/composer.html" %}
+{%- endif %}
+{%- if !filters.is_empty() %}
+<div class="w-full flex flex-row justify-start items-center flex-wrap gap-2 mb-2">
+{%- for f in filters %}
+<div class="group inline-flex min-w-0 max-w-full items-center gap-1.5 h-7 px-2.5 bg-mu-hover/50 hover:bg-mu-hover border border-mu-line/50 rounded-full mu-body transition-all duration-200">{{ h::icon(f.icon, "mu-icon-sm text-mu-text-secondary shrink-0") }}<span class="text-mu-text/80 truncate font-medium max-w-32">{{ f.label }}</span><span class="ml-0.5 -mr-1"><a href="{{ f.remove_href }}" aria-label="{{ c.t.s("memo.filters.remove") }}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-xs mu-focus">{{ h::icon("x", "") }}</a></span></div>
+{%- endfor %}
+</div>
+{%- endif %}
+{%- if list.cards.is_empty() && !filters.is_empty() %}
+<div class="flex w-full flex-wrap items-center justify-center gap-x-1 py-10 mu-body text-mu-text-secondary"><span>{{ c.t.s("memo.no-matching-memos") }}</span><span aria-hidden="true">·</span><a href="{{ clear_href }}" class="mu-link mu-focus">{{ c.t.s("memo.clear-filters") }}</a></div>
+{%- else if list.cards.is_empty() %}
+<div class="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-8 text-center w-full"><div class="w-full max-w-80 shrink-0">{% include "partials/ink.html" %}</div><p class="mt-1 mu-body text-mu-text-secondary">{{ c.t.s("message.no-data") }}</p></div>
+{%- endif %}
+</div>
+{% include "partials/memo_list.html" %}
+</div>
+{%- if !c.prefs.is_layout("list") %}{% include "partials/grid_script.html" %}{% endif %}
+</div>
+</div>
+</div>
+</div>
+</section>
+{% endblock %}

@@ -1,0 +1,10 @@
+node_modules
+client/dist
+server/target
+data
+*.db
+*.db-wal
+*.db-shm
+.env
+test-results
+playwright-report
