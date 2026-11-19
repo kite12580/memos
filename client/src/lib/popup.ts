@@ -10,7 +10,7 @@ interface Layer {
 }
 
 const stack: Layer[] = [];
-const GAP = 4;
+const GAP = 6;
 
 /** Places `positioner` next to `anchor` inside the viewport, flipping when it would overflow. */
 function place(positioner: HTMLElement, popup: HTMLElement, anchor: HTMLElement, side: Side, align: Align) {
