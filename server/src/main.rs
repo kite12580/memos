@@ -1,115 +1,9 @@
-use bytes::Bytes;
-use http_body_util::combinators::BoxBody;
-use http_body_util::{BodyExt, Full};
-use hyper::body::{Frame, Incoming};
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper_util::rt::{TokioIo, TokioTimer};
-use hyper_util::server::graceful::GracefulShutdown;
 use memos_lite::app::App;
 use memos_lite::assets::Assets;
 use memos_lite::config::Config;
 use memos_lite::db::Db;
-use memos_lite::http::{BodyStream, Request, Response};
-use std::convert::Infallible;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
-use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
-
-/// Whole-body limit for buffered requests; per-frame idle limit for streamed ones.
-const BODY_TIMEOUT: Duration = Duration::from_secs(300);
-const MAX_BUFFERED_BODY: usize = 16 << 20;
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
-
-fn stream_body(mut body: Incoming) -> BodyStream {
-    let (tx, rx) = mpsc::channel(2);
-    tokio::spawn(async move {
-        loop {
-            let data = match tokio::time::timeout(BODY_TIMEOUT, body.frame()).await {
-                Ok(None) => return,
-                Ok(Some(Ok(frame))) => match frame.into_data() {
-                    Ok(data) => Ok(data),
-                    Err(_) => continue,
-                },
-                _ => Err(()),
-            };
-            let failed = data.is_err();
-            if tx.send(data).await.is_err() || failed {
-                return;
-            }
-        }
-    });
-    rx
-}
-
-struct ChannelBody(BodyStream);
-
-impl hyper::body::Body for ChannelBody {
-    type Data = Bytes;
-    type Error = std::io::Error;
-
-    fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, std::io::Error>>> {
-        self.0.poll_recv(cx).map(|next| {
-            next.map(|r| {
-                r.map(Frame::data)
-                    .map_err(|()| std::io::Error::other("stream aborted"))
-            })
-        })
-    }
-}
-
-type ResBody = BoxBody<Bytes, std::io::Error>;
-
-async fn serve(app: Arc<App>, req: hyper::Request<Incoming>) -> Result<hyper::Response<ResBody>, Infallible> {
-    let (parts, body) = req.into_parts();
-    let headers: Vec<(String, String)> = parts
-        .headers
-        .iter()
-        .map(|(k, v)| (k.as_str().to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned()))
-        .collect();
-    let (body, stream) = if memos_lite::files::streams_body(parts.method.as_str(), parts.uri.path()) {
-        (None, Some(stream_body(body)))
-    } else {
-        let limited = http_body_util::Limited::new(body, MAX_BUFFERED_BODY);
-        match tokio::time::timeout(BODY_TIMEOUT, limited.collect()).await {
-            Ok(Ok(b)) => (Some(b.to_bytes().to_vec()), None),
-            Ok(Err(_)) => return Ok(to_hyper(Response::text(413, "Request body too large"))),
-            Err(_) => return Ok(to_hyper(Response::text(408, "Request Timeout"))),
-        }
-    };
-    let request = Request {
-        method: parts.method.as_str().to_string(),
-        path: parts.uri.path().to_string(),
-        query: parts.uri.query().unwrap_or("").to_string(),
-        headers,
-        body,
-        stream,
-    };
-    Ok(to_hyper(app.handle(request).await))
-}
-
-fn full(data: Bytes) -> ResBody {
-    Full::new(data).map_err(|never| match never {}).boxed()
-}
-
-fn to_hyper(res: Response) -> hyper::Response<ResBody> {
-    let mut out = hyper::Response::builder().status(res.status);
-    for (k, v) in &res.headers {
-        out = out.header(k, v);
-    }
-    let body = match res.stream {
-        Some(stream) => ChannelBody(stream).boxed(),
-        None => full(res.body),
-    };
-    out.body(body).unwrap_or_else(|_| {
-        let mut fallback = hyper::Response::new(full(Bytes::from_static(b"Internal Server Error")));
-        *fallback.status_mut() = hyper::StatusCode::INTERNAL_SERVER_ERROR;
-        fallback
-    })
-}
 
 fn fail(msg: impl std::fmt::Display) -> ! {
     eprintln!("{msg}");
@@ -145,6 +39,8 @@ fn main() {
 
     let assets = Assets::load(&config.client_dir).unwrap_or_else(|e| fail(e));
     let db = open_db(&config);
+    memos_lite::files::prepare(&config.data_dir)
+        .unwrap_or_else(|e| fail(format!("{}: {e}", config.data_dir.display())));
     let (host, port) = (config.host.clone(), config.port);
     let app = Arc::new(App::new(db, config, assets));
 
@@ -165,34 +61,6 @@ fn main() {
                 _ = term.recv() => {},
             }
         };
-        tokio::pin!(shutdown);
-        let graceful = GracefulShutdown::new();
-        loop {
-            tokio::select! {
-                _ = &mut shutdown => break,
-                accepted = listener.accept() => {
-                    let (stream, _) = match accepted {
-                        Ok(a) => a,
-                        Err(e) => {
-                            eprintln!("accept failed: {e}");
-                            tokio::time::sleep(Duration::from_millis(100)).await;
-                            continue;
-                        }
-                    };
-                    let _ = stream.set_nodelay(true);
-                    let app = app.clone();
-                    let svc = service_fn(move |req| serve(app.clone(), req));
-                    let conn = http1::Builder::new()
-                        .timer(TokioTimer::new())
-                        .header_read_timeout(Duration::from_secs(30))
-                        .serve_connection(TokioIo::new(stream), svc);
-                    let conn = graceful.watch(conn);
-                    tokio::spawn(async move {
-                        let _ = conn.await;
-                    });
-                }
-            }
-        }
-        let _ = tokio::time::timeout(SHUTDOWN_GRACE, graceful.shutdown()).await;
+        memos_lite::server::run(listener, app, shutdown).await;
     });
 }

@@ -2,23 +2,38 @@
 //! support. Thumbnails are made by the browser; the server never decodes
 //! an image.
 
-use crate::app::App;
+use crate::app::{App, server_error};
 use crate::db::attachments::{self as atts, NewAttachment};
 use crate::db::new_uid;
-use crate::http::{BodyStream, ByteRange, Request, Response, encode_component, parse_range};
-use std::path::PathBuf;
+use crate::http::{BODY_TIMEOUT, BodyStream, ByteRange, Request, Response, encode_component, parse_range};
+use bytes::BytesMut;
+use http_body_util::BodyExt;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 const CHUNK: usize = 64 * 1024;
 const MAX_THUMB: u64 = 2 << 20;
+const PARTIAL: &str = "part";
 
-pub fn dir(app: &App) -> PathBuf {
-    app.cfg.data_dir.join("attachments")
+pub fn dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("attachments")
+}
+
+/// Creates the attachment directory and clears uploads a crash left half-written.
+pub fn prepare(data_dir: &Path) -> std::io::Result<()> {
+    let dir = dir(data_dir);
+    std::fs::create_dir_all(&dir)?;
+    for entry in std::fs::read_dir(&dir)?.flatten() {
+        if entry.path().extension().is_some_and(|e| e == PARTIAL) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    Ok(())
 }
 
 fn path(app: &App, uid: &str, thumb: bool) -> PathBuf {
-    dir(app).join(if thumb { format!("{uid}.thumb") } else { uid.to_string() })
+    dir(&app.cfg.data_dir).join(if thumb { format!("{uid}.thumb") } else { uid.to_string() })
 }
 
 pub fn remove_files(app: &App, uid: &str) {
@@ -26,34 +41,54 @@ pub fn remove_files(app: &App, uid: &str) {
     let _ = std::fs::remove_file(path(app, uid, true));
 }
 
+/// An upload in progress, deleted unless it is renamed into place.
+struct Partial(Option<PathBuf>);
+
+impl Drop for Partial {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+fn too_large() -> Response {
+    Response::text(413, "file too large")
+}
+
 /// Writes the body to `dest` through a temporary file, refusing more than
 /// `max` bytes. Returns the size written.
-async fn save(mut body: BodyStream, dest: &PathBuf, max: u64) -> Result<u64, Response> {
-    let tmp = dest.with_extension("part");
-    let mut file = tokio::fs::File::create(&tmp)
-        .await
-        .map_err(crate::app::server_error)?;
+async fn save(req: &mut Request, dest: &Path, max: u64) -> Result<u64, Response> {
+    if req.header("content-length").and_then(|l| l.parse::<u64>().ok()).is_some_and(|l| l > max) {
+        return Err(too_large());
+    }
+    let Some(mut body) = req.stream.take() else {
+        return Err(Response::error(400, "no body"));
+    };
+    let tmp = dest.with_file_name(format!("{}.{PARTIAL}", new_uid()));
+    let mut file = tokio::fs::File::create(&tmp).await.map_err(server_error)?;
+    let mut partial = Partial(Some(tmp.clone()));
     let mut size = 0u64;
-    while let Some(chunk) = body.recv().await {
-        let Ok(chunk) = chunk else {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(Response::text(400, "upload interrupted"));
+    loop {
+        let frame = match tokio::time::timeout(BODY_TIMEOUT, body.frame()).await {
+            Ok(None) => break,
+            Ok(Some(Ok(frame))) => frame,
+            _ => return Err(Response::text(400, "upload interrupted")),
+        };
+        let Ok(chunk) = frame.into_data() else {
+            continue;
         };
         size += chunk.len() as u64;
         if size > max {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(Response::text(413, "file too large"));
+            return Err(too_large());
         }
-        if let Err(e) = file.write_all(&chunk).await {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(crate::app::server_error(e));
-        }
+        file.write_all(&chunk).await.map_err(server_error)?;
     }
-    file.flush().await.map_err(crate::app::server_error)?;
+    file.flush().await.map_err(server_error)?;
+    file.sync_data().await.map_err(server_error)?;
     drop(file);
-    tokio::fs::rename(&tmp, dest)
-        .await
-        .map_err(crate::app::server_error)?;
+    tokio::fs::rename(&tmp, dest).await.map_err(server_error)?;
+    partial.0 = None;
     Ok(size)
 }
 
@@ -78,14 +113,8 @@ pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
         .unwrap_or_else(|| crate::assets::mime_type(&name).split(';').next().unwrap_or("").to_string());
     let dim = |k: &str| req.query(k).and_then(|v| v.parse::<i64>().ok()).filter(|v| *v > 0);
     let (width, height) = (dim("w"), dim("h"));
-    let Some(body) = req.stream.take() else {
-        return Response::error(400, "no body");
-    };
-    if let Err(e) = tokio::fs::create_dir_all(dir(app)).await {
-        return crate::app::server_error(e);
-    }
     let uid = new_uid();
-    let size = match save(body, &path(app, &uid, false), app.cfg.max_upload).await {
+    let size = match save(&mut req, &path(app, &uid, false), app.cfg.max_upload).await {
         Ok(s) => s,
         Err(res) => return res,
     };
@@ -122,16 +151,13 @@ pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
 
 /// `POST /attachments/{uid}/thumb` with a small WebP or JPEG the browser made.
 pub async fn upload_thumb(app: &Arc<App>, mut req: Request, uid: &str) -> Response {
-    let Some(body) = req.stream.take() else {
-        return Response::error(400, "no body");
-    };
     let uid_owned = uid.to_string();
     match app.db.with(move |c| atts::get(c, &uid_owned)).await {
         Ok(Some(_)) => {}
         Ok(None) => return Response::not_found(),
         Err(e) => return e.into(),
     }
-    if let Err(res) = save(body, &path(app, uid, true), MAX_THUMB).await {
+    if let Err(res) = save(&mut req, &path(app, uid, true), MAX_THUMB).await {
         return res;
     }
     let uid_owned = uid.to_string();
@@ -214,32 +240,24 @@ pub async fn serve(app: &Arc<App>, req: &Request, uid: &str, thumb: bool) -> Res
     if start > 0 && file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
         return Response::internal_error();
     }
+    res.stream(read_stream(file, len))
+}
+
+fn read_stream(file: tokio::fs::File, len: u64) -> BodyStream {
     let (tx, rx) = tokio::sync::mpsc::channel(2);
     tokio::spawn(async move {
-        let mut left = len;
-        let mut buf = vec![0u8; CHUNK];
-        while left > 0 {
-            let want = (left as usize).min(CHUNK);
-            match file.read(&mut buf[..want]).await {
-                Ok(0) | Err(_) => {
-                    let _ = tx.send(Err(())).await;
-                    return;
-                }
-                Ok(n) => {
-                    left -= n as u64;
-                    if tx.send(Ok(bytes::Bytes::copy_from_slice(&buf[..n]))).await.is_err() {
-                        return;
-                    }
-                }
+        let mut file = file.take(len);
+        while file.limit() > 0 {
+            let mut buf = BytesMut::with_capacity(file.limit().min(CHUNK as u64) as usize);
+            let chunk = match file.read_buf(&mut buf).await {
+                Ok(n) if n > 0 => Ok(buf.freeze()),
+                _ => Err(()),
+            };
+            let failed = chunk.is_err();
+            if tx.send(chunk).await.is_err() || failed {
+                return;
             }
         }
     });
-    res.stream(rx)
-}
-
-/// Request paths whose bodies are streamed instead of buffered.
-pub fn streams_body(method: &str, path: &str) -> bool {
-    method == "POST"
-        && (path.ends_with("/attachments") || (path.contains("/attachments/") && path.ends_with("/thumb"))
-            || path.ends_with("/api/memos/attachments"))
+    rx
 }

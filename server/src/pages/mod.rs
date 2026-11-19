@@ -110,14 +110,18 @@ pub fn html(t: &impl Template) -> Response {
     }
 }
 
-/// A page response, or 304 when the browser's copy is current.
-pub fn page(app: &App, req: &Request, c: &Ctx, t: &impl Template) -> Response {
+/// The page's ETag, or a 304 when the browser's copy is current.
+pub fn validator(app: &App, req: &Request, c: &Ctx) -> Result<String, Response> {
     let etag = app.etag(c, &req.path, &req.query);
     if req.header("if-none-match") == Some(etag.as_str()) {
-        return Response::new(304).with("etag", &etag);
+        return Err(Response::new(304).with("etag", &etag));
     }
+    Ok(etag)
+}
+
+pub fn page(etag: &str, t: &impl Template) -> Response {
     html(t)
-        .with("etag", &etag)
+        .with("etag", etag)
         .with("cache-control", "private, no-cache")
         .with("vary", "Cookie, Accept-Language")
 }
@@ -304,6 +308,10 @@ pub fn cards(c: &Ctx, ms: &[Memo], extras: &Extras, in_list: bool) -> Vec<Card> 
 
 pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
     let mut c = app.ctx(req);
+    let etag = match validator(app, req, &c) {
+        Ok(etag) => etag,
+        Err(not_modified) => return not_modified,
+    };
     let (view_id, q) = view_and_query(req);
     let terms = query::parse(&q);
     c.q = q.clone();
@@ -368,7 +376,7 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
         clear_href: path,
         c,
     };
-    page(app, req, &p.c, &p)
+    page(&etag, &p)
 }
 
 pub async fn list_fragment(app: &Arc<App>, req: &Request) -> Response {
@@ -530,6 +538,10 @@ pub async fn link_search(app: &Arc<App>, req: &Request) -> Response {
 
 pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     let c = app.ctx(req);
+    let etag = match validator(app, req, &c) {
+        Ok(etag) => etag,
+        Err(not_modified) => return not_modified,
+    };
     let uid_owned = uid.to_string();
     let data = app
         .db
@@ -570,5 +582,5 @@ pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
         composer,
         c,
     };
-    page(app, req, &p.c, &p)
+    page(&etag, &p)
 }

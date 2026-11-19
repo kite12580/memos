@@ -1,10 +1,19 @@
 use bytes::Bytes;
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, LengthLimitError, Limited};
 use std::io::Write;
+use std::time::Duration;
 
-/// Body bytes as they arrive; an `Err` means the transfer broke off.
+pub type RequestBody = BoxBody<Bytes, std::io::Error>;
+
+/// Response bytes as they are produced; an `Err` means the transfer broke off.
 pub type BodyStream = tokio::sync::mpsc::Receiver<Result<Bytes, ()>>;
+
+/// Whole-body limit for buffered requests; per-frame idle limit for streamed ones.
+pub const BODY_TIMEOUT: Duration = Duration::from_secs(300);
+const MAX_BUFFERED_BODY: usize = 16 << 20;
 
 pub struct Request {
     pub method: String,
@@ -13,10 +22,10 @@ pub struct Request {
     pub query: String,
     /// Lowercased names.
     pub headers: Vec<(String, String)>,
-    /// `None` when the request had no body or it could not be read.
-    pub body: Option<Vec<u8>>,
-    /// Set instead of `body` for upload routes.
-    pub stream: Option<BodyStream>,
+    /// What `buffer` read.
+    pub body: Option<Bytes>,
+    /// The body while nothing has read it.
+    pub stream: Option<RequestBody>,
 }
 
 impl Request {
@@ -37,6 +46,22 @@ impl Request {
             .iter()
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.as_str())
+    }
+
+    /// Reads the whole body into `body`, for handlers that parse it.
+    pub async fn buffer(&mut self) -> Result<(), Response> {
+        let Some(stream) = self.stream.take() else {
+            return Ok(());
+        };
+        match tokio::time::timeout(BODY_TIMEOUT, Limited::new(stream, MAX_BUFFERED_BODY).collect()).await {
+            Ok(Ok(b)) => {
+                self.body = Some(b.to_bytes());
+                Ok(())
+            }
+            Ok(Err(e)) if e.is::<LengthLimitError>() => Err(Response::text(413, "Request body too large")),
+            Ok(Err(_)) => Err(Response::text(400, "Bad Request")),
+            Err(_) => Err(Response::text(408, "Request Timeout")),
+        }
     }
 
     /// First occurrence.
@@ -310,7 +335,7 @@ mod tests {
         let mut req = Request::get("POST", "/x?a=1&b=two+words");
         req.headers
             .push(("cookie".into(), "theme=dark; lang=zh-Hans".into()));
-        req.body = Some(b"content=%23tag+hi&pinned=1".to_vec());
+        req.body = Some(Bytes::from_static(b"content=%23tag+hi&pinned=1"));
         assert_eq!(req.query("b").as_deref(), Some("two words"));
         assert_eq!(req.cookie("lang").as_deref(), Some("zh-Hans"));
         assert_eq!(req.cookie("missing"), None);

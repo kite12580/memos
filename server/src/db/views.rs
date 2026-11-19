@@ -57,14 +57,11 @@ pub fn delete(c: &Connection, id: i64) -> DbResult<()> {
     Ok(())
 }
 
-pub fn reorder(c: &mut Connection, ids: &[i64]) -> DbResult<()> {
-    let tx = c.transaction()?;
+pub fn reorder(tx: &rusqlite::Transaction, ids: &[i64]) -> DbResult<()> {
     let mut st = tx.prepare_cached("UPDATE view SET position = ? WHERE id = ?")?;
     for (i, id) in ids.iter().enumerate() {
         st.execute(params![i as i64, id])?;
     }
-    drop(st);
-    tx.commit()?;
     Ok(())
 }
 

@@ -12,4 +12,5 @@ pub mod http;
 pub mod i18n;
 pub mod pages;
 pub mod query;
+pub mod server;
 pub mod views;

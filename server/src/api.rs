@@ -40,7 +40,7 @@ fn memo_json(base: &str, m: &Memo, attachments: &[atts::Attachment]) -> Value {
     })
 }
 
-pub async fn handle(app: &Arc<App>, mut req: Request) -> Response {
+pub async fn handle(app: &Arc<App>, req: Request) -> Response {
     if app.cfg.api_token.is_none() {
         return Response::not_found();
     }
@@ -106,7 +106,7 @@ pub async fn handle(app: &Arc<App>, mut req: Request) -> Response {
             let now = (app.now)();
             let res = app
                 .db
-                .with(move |c| {
+                .tx(move |c| {
                     let m = memos::create(c, new)?;
                     atts::attach(c, m.id, &attachments)?;
                     if pinned {
@@ -126,7 +126,6 @@ pub async fn handle(app: &Arc<App>, mut req: Request) -> Response {
             }
         }
         ("POST", ["api", "memos", "attachments"]) => {
-            req.path = "/attachments".into();
             crate::files::upload(app, req).await
         }
         (method, ["api", "memos", uid]) => {
@@ -154,7 +153,7 @@ pub async fn handle(app: &Arc<App>, mut req: Request) -> Response {
                     let now = (app.now)();
                     let res = app
                         .db
-                        .with(move |c| {
+                        .tx(move |c| {
                             if let Some(content) = b["content"].as_str() {
                                 let html = content::fallback_html(content);
                                 let edit = Edit {

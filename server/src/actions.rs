@@ -49,7 +49,7 @@ pub async fn create(app: &Arc<App>, req: &Request) -> Response {
     let created_ts = b["createdTs"].as_i64().unwrap_or_else(app.now);
     let res = app
         .db
-        .with(move |c| {
+        .tx(move |c| {
             let parent_id = match parent {
                 Some(uid) => match memos::get(c, &uid)? {
                     Some(p) => Some(p.id),
@@ -107,7 +107,7 @@ pub async fn update(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     let uid_owned = uid.to_string();
     let res = app
         .db
-        .with(move |c| {
+        .tx(move |c| {
             let out = memos::update(c, &uid_owned, rev, edit)?;
             if let Outcome::Done(m) = &out {
                 if let Some(a) = attachments {
@@ -147,7 +147,7 @@ pub async fn set_html(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     let uid_owned = uid.to_string();
     let res = app
         .db
-        .with(move |c| memos::set_html(c, &uid_owned, rev, &html, &ver, &derived))
+        .tx(move |c| memos::set_html(c, &uid_owned, rev, &html, &ver, &derived))
         .await;
     match res {
         Ok(Outcome::Done(_)) => {
@@ -164,7 +164,7 @@ pub async fn flag(app: &Arc<App>, req: &Request, uid: &str, flag: Flag) -> Respo
     let on = body(req)["on"].as_bool().unwrap_or(true);
     let now = (app.now)();
     let uid_owned = uid.to_string();
-    match app.db.with(move |c| memos::set_flag(c, &uid_owned, flag, on, now)).await {
+    match app.db.tx(move |c| memos::set_flag(c, &uid_owned, flag, on, now)).await {
         Ok(true) => {
             app.changed();
             card_response(app, req, uid).await
@@ -176,7 +176,7 @@ pub async fn flag(app: &Arc<App>, req: &Request, uid: &str, flag: Flag) -> Respo
 
 pub async fn delete(app: &Arc<App>, uid: &str) -> Response {
     let uid_owned = uid.to_string();
-    match app.db.with(move |c| memos::delete(c, &uid_owned)).await {
+    match app.db.tx(move |c| memos::delete(c, &uid_owned)).await {
         Ok(Some(files)) => {
             for f in files {
                 crate::files::remove_files(app, &f);
@@ -202,7 +202,7 @@ async fn rewrite(
     let now = (app.now)();
     let res = app
         .db
-        .with(move |c| {
+        .tx(move |c| {
             let Some(m) = memos::get(c, &uid_owned)? else {
                 return Ok(Outcome::NotFound);
             };
@@ -268,7 +268,7 @@ pub async fn react(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     let uid_owned = uid.to_string();
     let res = app
         .db
-        .with(move |c| {
+        .tx(move |c| {
             let Some(m) = memos::get(c, &uid_owned)? else {
                 return Ok(false);
             };
@@ -295,7 +295,7 @@ pub async fn save_view(app: &Arc<App>, req: &Request) -> Response {
     }
     let icon = b["icon"].as_str().unwrap_or("").to_string();
     let id = b["id"].as_i64();
-    match app.db.with(move |c| views::save(c, id, &name, &icon, &query)).await {
+    match app.db.tx(move |c| views::save(c, id, &name, &icon, &query)).await {
         Ok(id) => {
             app.changed();
             Response::json(200, &json!({ "id": id }))
@@ -309,7 +309,7 @@ pub async fn order_views(app: &Arc<App>, req: &Request) -> Response {
         .as_array()
         .map(|a| a.iter().filter_map(Value::as_i64).collect())
         .unwrap_or_default();
-    match app.db.with(move |c| views::reorder(c, &ids)).await {
+    match app.db.tx(move |c| views::reorder(c, &ids)).await {
         Ok(()) => {
             app.changed();
             Response::new(204)
@@ -322,7 +322,7 @@ pub async fn delete_view(app: &Arc<App>, id: &str) -> Response {
     let Ok(id) = id.parse::<i64>() else {
         return Response::not_found();
     };
-    match app.db.with(move |c| views::delete(c, id)).await {
+    match app.db.tx(move |c| views::delete(c, id)).await {
         Ok(()) => {
             app.changed();
             Response::new(204)
@@ -348,7 +348,7 @@ pub async fn tag_meta(app: &Arc<App>, req: &Request) -> Response {
     };
     let res = app
         .db
-        .with(move |c| {
+        .tx(move |c| {
             views::set_tag_meta(c, &meta)?;
             views::tag_meta(c)
         })

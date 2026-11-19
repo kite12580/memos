@@ -21,7 +21,7 @@ pub fn run(db: &Db, data_dir: &Path, out: &Path) -> Result<(), String> {
         let mut tar = tar::Builder::new(file);
         tar.append_path_with_name(&snapshot, "memos.db")
             .map_err(|e| e.to_string())?;
-        let attachments = data_dir.join("attachments");
+        let attachments = crate::files::dir(data_dir);
         if let Ok(entries) = std::fs::read_dir(&attachments) {
             for entry in entries.flatten() {
                 let name = entry.file_name();

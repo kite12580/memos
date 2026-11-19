@@ -148,6 +148,10 @@ fn sidebar(c: &Ctx) -> Sidebar {
 
 pub async fn settings(app: &Arc<App>, req: &Request) -> Response {
     let c = app.ctx(req);
+    let etag = match super::validator(app, req, &c) {
+        Ok(etag) => etag,
+        Err(not_modified) => return not_modified,
+    };
     let app2 = app.clone();
     let data = app
         .db
@@ -190,5 +194,5 @@ pub async fn settings(app: &Arc<App>, req: &Request) -> Response {
         stats,
         c,
     };
-    super::page(app, req, &p.c, &p)
+    super::page(&etag, &p)
 }

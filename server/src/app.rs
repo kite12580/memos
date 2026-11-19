@@ -143,11 +143,15 @@ impl App {
         res
     }
 
-    async fn route(self: &Arc<App>, req: Request) -> Response {
+    async fn route(self: &Arc<App>, mut req: Request) -> Response {
         let segs: Vec<String> = req.path.split('/').skip(1).map(decode_path).collect();
         let segs: Vec<&str> = segs.iter().map(String::as_str).collect();
         let get = req.method == "GET" || req.method == "HEAD";
         let post = req.method == "POST";
+        let upload = post && matches!(segs.as_slice(), ["attachments"] | ["attachments", _, "thumb"] | ["api", "memos", "attachments"]);
+        if !upload && let Err(res) = req.buffer().await {
+            return res;
+        }
         match (get, post, segs.as_slice()) {
             (true, _, [""]) => pages::home(self, &req, pages::Scope::Home).await,
             (true, _, ["archived"]) => pages::home(self, &req, pages::Scope::Archived).await,
@@ -165,7 +169,9 @@ impl App {
             (true, _, ["f", "attachments"]) => pages::attachments_fragment(self, &req).await,
             (true, _, ["f", "strings"]) => {
                 let c = self.ctx(&req);
-                Response::json(200, &serde_json::from_str(&c.t.client_json()).unwrap_or_default())
+                Response::new(200)
+                    .with("content-type", "application/json")
+                    .body(c.t.client_json())
                     .with("cache-control", "private, no-cache")
                     .with("vary", "Cookie, Accept-Language")
             }

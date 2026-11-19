@@ -1,5 +1,5 @@
 use super::DbResult;
-use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_from_iter};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -107,16 +107,13 @@ pub fn set_thumb(c: &Connection, uid: &str) -> DbResult<bool> {
 
 /// Gives the memo exactly these attachments, in this order. Attachments
 /// dropped from it stay in the library as unused.
-pub fn attach(c: &mut Connection, memo_id: i64, uids: &[String]) -> DbResult<()> {
-    let tx = c.transaction()?;
+pub fn attach(tx: &Transaction, memo_id: i64, uids: &[String]) -> DbResult<()> {
     tx.prepare_cached("UPDATE attachment SET memo_id = NULL WHERE memo_id = ?")?
         .execute([memo_id])?;
     let mut st = tx.prepare_cached("UPDATE attachment SET memo_id = ?, position = ? WHERE uid = ?")?;
     for (i, uid) in uids.iter().enumerate() {
         st.execute(params![memo_id, i as i64, uid])?;
     }
-    drop(st);
-    tx.commit()?;
     Ok(())
 }
 

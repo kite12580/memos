@@ -3,7 +3,7 @@ pub mod memos;
 pub mod schema;
 pub mod views;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -48,7 +48,7 @@ impl Db {
         conn.pragma_update(None, "journal_size_limit", 4 << 20)?;
         conn.pragma_update(None, "cache_size", -2000)?;
         conn.pragma_update(None, "temp_store", "MEMORY")?;
-        conn.set_prepared_statement_cache_capacity(32);
+        conn.set_prepared_statement_cache_capacity(64);
         schema::migrate(&mut conn)?;
         conn.execute_batch("PRAGMA optimize=0x10002")?;
         Ok(Db {
@@ -63,6 +63,20 @@ impl Db {
         let conn = self.conn.clone();
         tokio::task::spawn_blocking(move || f(&mut conn.lock().unwrap_or_else(|p| p.into_inner())))
             .await?
+    }
+
+    /// `with`, inside one transaction that commits when `f` succeeds.
+    pub async fn tx<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&Transaction) -> DbResult<T> + Send + 'static,
+    ) -> DbResult<T> {
+        self.with(move |c| {
+            let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let out = f(&tx)?;
+            tx.commit()?;
+            Ok(out)
+        })
+        .await
     }
 
     /// For subcommands that run outside the async runtime.
@@ -95,4 +109,24 @@ pub fn new_uid() -> String {
         .iter()
         .map(|b| ALPHABET[(*b as usize) % ALPHABET.len()] as char)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn tx_commits_all_or_nothing() {
+        let db = Db::open(":memory:").unwrap();
+        let failed = db
+            .tx(|c| {
+                set_setting(c, "a", "1")?;
+                Err::<(), _>(DbError("stop".into()))
+            })
+            .await;
+        assert!(failed.is_err());
+        assert_eq!(db.blocking(|c| get_setting(c, "a")).unwrap(), None);
+        db.tx(|c| set_setting(c, "a", "1")).await.unwrap();
+        assert_eq!(db.blocking(|c| get_setting(c, "a")).unwrap().as_deref(), Some("1"));
+    }
 }

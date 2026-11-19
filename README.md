@@ -11,6 +11,9 @@ instantly on a weak server and an old phone.
   writing.
 - One static binary of about 10 MB that idles at a few MB of memory.
 
+SQLite is the only database: search, backup and the single-connection design rely on it,
+so memos' MySQL and PostgreSQL drivers have no counterpart here.
+
 There is no login. Put it behind a reverse proxy that authenticates (Caddy, Authelia,
 Tailscale, Cloudflare Access, …).
 

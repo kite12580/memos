@@ -287,6 +287,10 @@ fn build(c: &Ctx, start: Date, memos: &[DayMemo]) -> Calendar {
 
 pub async fn calendar(app: &Arc<App>, req: &Request, month: Option<&str>) -> Response {
     let c = app.ctx(req);
+    let etag = match super::validator(app, req, &c) {
+        Ok(etag) => etag,
+        Err(not_modified) => return not_modified,
+    };
     let start = match month {
         Some(m) => match parse_month(m) {
             Some(d) => d,
@@ -341,7 +345,7 @@ pub async fn calendar(app: &Arc<App>, req: &Request, month: Option<&str>) -> Res
         sb,
         c,
     };
-    super::page(app, req, &p.c, &p)
+    super::page(&etag, &p)
 }
 
 #[cfg(test)]

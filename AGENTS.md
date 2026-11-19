@@ -5,9 +5,10 @@ memos branches in this repository; never merge between them.
 
 ## Layout
 
-- `server/` — Rust. `app.rs` routes, `pages/` GET handlers (full pages and HTML fragments
+- `server/` — Rust. `server.rs` the hyper listener, `app.rs` routes, `pages/` GET handlers (full pages and HTML fragments
   under `/f/`), `actions.rs` POST handlers, `api.rs` JSON API, `files.rs` attachments,
-  `db/` SQLite (schema in `db/schema.rs`, append-only migrations), `query.rs` the search
+  `db/` SQLite (schema in `db/schema.rs`, append-only migrations; writes go through
+  `Db::tx`), `query.rs` the search
   syntax, `content.rs` stored-HTML handling, `views.rs` view models, `templates/` Askama.
 - `client/` — TypeScript, no framework. `src/boot.ts` is the only script every page loads;
   everything else is a lazy chunk (`src/editor/`, `src/reactions.ts`). `src/memos/` holds

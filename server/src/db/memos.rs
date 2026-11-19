@@ -3,7 +3,7 @@ use crate::content::Derived;
 use crate::query::{self, Term};
 use jiff::tz::TimeZone;
 use rusqlite::types::Value;
-use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_from_iter};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -176,8 +176,7 @@ fn set_tags(c: &Connection, id: i64, tags: &[String]) -> DbResult<()> {
     Ok(())
 }
 
-pub fn create(c: &mut Connection, m: NewMemo) -> DbResult<Memo> {
-    let tx = c.transaction()?;
+pub fn create(tx: &Transaction, m: NewMemo) -> DbResult<Memo> {
     let uid = new_uid();
     let d = &m.derived;
     tx.prepare_cached(
@@ -201,13 +200,12 @@ pub fn create(c: &mut Connection, m: NewMemo) -> DbResult<Memo> {
         d.has_image
     ])?;
     let id = tx.last_insert_rowid();
-    set_tags(&tx, id, &d.tags)?;
+    set_tags(tx, id, &d.tags)?;
     if let Some(parent) = m.parent_id {
         tx.prepare_cached("UPDATE memo SET comment_count = comment_count + 1 WHERE id = ?")?
             .execute([parent])?;
     }
-    tx.commit()?;
-    get_by_id(c, id)?.ok_or_else(|| DbError("memo vanished".into()))
+    get_by_id(tx, id)?.ok_or_else(|| DbError("memo vanished".into()))
 }
 
 pub enum Outcome<T> {
@@ -238,9 +236,8 @@ pub struct Edit {
 }
 
 /// Replaces the content of the memo at revision `rev`.
-pub fn update(c: &mut Connection, uid: &str, rev: Option<i64>, e: Edit) -> DbResult<Outcome<Memo>> {
-    let tx = c.transaction()?;
-    let Some(cur) = get(&tx, uid)? else {
+pub fn update(tx: &Transaction, uid: &str, rev: Option<i64>, e: Edit) -> DbResult<Outcome<Memo>> {
+    let Some(cur) = get(tx, uid)? else {
         return Ok(Outcome::NotFound);
     };
     if rev.is_some_and(|r| r != cur.rev) {
@@ -267,15 +264,13 @@ pub fn update(c: &mut Connection, uid: &str, rev: Option<i64>, e: Edit) -> DbRes
         if touched { e.now } else { cur.updated_ts },
         cur.id
     ])?;
-    set_tags(&tx, cur.id, &d.tags)?;
-    tx.commit()?;
-    Ok(Outcome::Done(get_by_id(c, cur.id)?.expect("memo just updated")))
+    set_tags(tx, cur.id, &d.tags)?;
+    Ok(Outcome::Done(get_by_id(tx, cur.id)?.expect("memo just updated")))
 }
 
 /// Stores HTML a browser rendered for unchanged content.
-pub fn set_html(c: &mut Connection, uid: &str, rev: i64, html: &str, ver: &str, d: &Derived) -> DbResult<Outcome<Memo>> {
-    let tx = c.transaction()?;
-    let Some(cur) = get(&tx, uid)? else {
+pub fn set_html(tx: &Transaction, uid: &str, rev: i64, html: &str, ver: &str, d: &Derived) -> DbResult<Outcome<Memo>> {
+    let Some(cur) = get(tx, uid)? else {
         return Ok(Outcome::NotFound);
     };
     if cur.rev != rev {
@@ -286,9 +281,8 @@ pub fn set_html(c: &mut Connection, uid: &str, rev: i64, html: &str, ver: &str, 
            has_image = ? WHERE id = ?",
     )?
     .execute(params![html, ver, d.has_task, d.has_todo, d.has_link, d.has_code, d.has_image, cur.id])?;
-    set_tags(&tx, cur.id, &d.tags)?;
-    tx.commit()?;
-    Ok(Outcome::Done(get_by_id(c, cur.id)?.expect("memo just updated")))
+    set_tags(tx, cur.id, &d.tags)?;
+    Ok(Outcome::Done(get_by_id(tx, cur.id)?.expect("memo just updated")))
 }
 
 #[derive(Clone, Copy)]
@@ -310,9 +304,8 @@ pub fn set_flag(c: &Connection, uid: &str, flag: Flag, on: bool, now: i64) -> Db
 
 /// Deletes a memo with its comments; returns the uids of their attachments,
 /// whose rows are gone and whose files the caller removes.
-pub fn delete(c: &mut Connection, uid: &str) -> DbResult<Option<Vec<String>>> {
-    let tx = c.transaction()?;
-    let Some(cur) = get(&tx, uid)? else {
+pub fn delete(tx: &Transaction, uid: &str) -> DbResult<Option<Vec<String>>> {
+    let Some(cur) = get(tx, uid)? else {
         return Ok(None);
     };
     let files: Vec<String> = tx
@@ -331,7 +324,6 @@ pub fn delete(c: &mut Connection, uid: &str) -> DbResult<Option<Vec<String>>> {
         tx.prepare_cached("UPDATE memo SET comment_count = max(comment_count - 1, 0) WHERE id = ?")?
             .execute([parent])?;
     }
-    tx.commit()?;
     Ok(Some(files))
 }
 
@@ -397,8 +389,7 @@ pub fn relations(c: &Connection, ids: &[i64]) -> DbResult<HashMap<i64, Links>> {
 
 /// Replaces the memos `id` links to. Unknown uids and links to itself are
 /// skipped.
-pub fn set_relations(c: &mut Connection, id: i64, uids: &[String]) -> DbResult<()> {
-    let tx = c.transaction()?;
+pub fn set_relations(tx: &Transaction, id: i64, uids: &[String]) -> DbResult<()> {
     tx.prepare_cached("DELETE FROM memo_relation WHERE memo_id = ?")?
         .execute([id])?;
     let mut st = tx.prepare_cached(
@@ -408,8 +399,6 @@ pub fn set_relations(c: &mut Connection, id: i64, uids: &[String]) -> DbResult<(
     for uid in uids {
         st.execute(params![id, uid])?;
     }
-    drop(st);
-    tx.commit()?;
     Ok(())
 }
 
@@ -558,6 +547,7 @@ mod tests {
     fn lists_pages_with_pinned_first() {
         let db = Db::open(":memory:").unwrap();
         db.blocking(|c| {
+            let c = &c.transaction()?;
             for i in 0..5 {
                 create(c, new(&format!("memo {i} #t{}", i % 2), 100 + i))?;
             }
@@ -585,6 +575,7 @@ mod tests {
     fn searches_text_and_nested_tags() {
         let db = Db::open(":memory:").unwrap();
         db.blocking(|c| {
+            let c = &c.transaction()?;
             create(c, new("中文搜索测试 #work/alpha", 1))?;
             create(c, new("an apple a day #work", 2))?;
             create(c, new("#workshop notes", 3))?;
@@ -605,6 +596,7 @@ mod tests {
     fn comments_relations_reactions() {
         let db = Db::open(":memory:").unwrap();
         db.blocking(|c| {
+            let c = &c.transaction()?;
             let a = create(c, new("a", 1))?;
             let b = create(c, new("b", 2))?;
             let mut com = new("comment", 3);

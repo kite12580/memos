@@ -140,6 +140,10 @@ impl ViewsPage<'_> {
 
 pub async fn views(app: &Arc<App>, req: &Request) -> Response {
     let c = app.ctx(req);
+    let etag = match super::validator(app, req, &c) {
+        Ok(etag) => etag,
+        Err(not_modified) => return not_modified,
+    };
     let views = match app.db.with(|conn| crate::db::views::list(conn)).await {
         Ok(v) => v,
         Err(e) => return e.into(),
@@ -163,7 +167,7 @@ pub async fn views(app: &Arc<App>, req: &Request) -> Response {
         sb,
         c,
     };
-    super::page(app, req, &p.c, &p)
+    super::page(&etag, &p)
 }
 
 #[cfg(test)]

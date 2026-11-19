@@ -251,6 +251,10 @@ fn limit_for(tab: Section) -> usize {
 
 pub async fn attachments(app: &Arc<App>, req: &Request) -> Response {
     let c = app.ctx(req);
+    let etag = match super::validator(app, req, &c) {
+        Ok(etag) => etag,
+        Err(not_modified) => return not_modified,
+    };
     let tab = Section::parse(&req.query("tab").unwrap_or_default());
     let limit = limit_for(tab);
     let data = app
@@ -269,7 +273,7 @@ pub async fn attachments(app: &Arc<App>, req: &Request) -> Response {
         counts,
         c,
     };
-    super::page(app, req, &p.c, &p)
+    super::page(&etag, &p)
 }
 
 /// The next page of a library section, as the parts the page appends.
