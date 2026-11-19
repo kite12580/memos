@@ -73,6 +73,12 @@
   content-visibility: auto;
 }
 
+/* Compact mode folds a memo by its full height (lib/cards.ts initClamps), so its blocks lay out
+   with the card rather than one by one. */
+[data-clamp] .mbe-root > .mbe-lazy {
+  content-visibility: visible;
+}
+
 /* Short names for memos' long class lists that repeat on every card: in stored memo HTML
    (editor/render.ts ALIASES) and in templates/partials/card.html. */
 @layer utilities {

@@ -105,7 +105,9 @@ export async function refreshStale(cards: HTMLElement[], version: string) {
       const src = await res.json();
       const html = await renderHTML(src.content);
       await post(`/memos/${uid}/html`, { html, ver: version, rev: src.rev });
-      const root = card.querySelector(".memo-content-root");
+      const current = document.getElementById(`m-${uid}`);
+      current?.removeAttribute("data-stale");
+      const root = current?.querySelector(".memo-content-root");
       if (root) root.innerHTML = html;
     } catch {
       // A memo that fails to render keeps its server HTML; the next visit tries again.

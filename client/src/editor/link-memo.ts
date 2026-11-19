@@ -18,11 +18,14 @@ export function openLinkMemo(session: Session, t: (k: string) => string) {
     input.placeholder = t("common.search");
     const results = root.querySelector<HTMLElement>("[data-results]")!;
     let timer = 0;
+    let latest = 0;
     const search = async () => {
+      const id = ++latest;
       const exclude = session.uid ? `&exclude=${session.uid}` : "";
       const res = await request(`/f/links?q=${encodeURIComponent(input.value)}${exclude}`).catch(() => null);
       if (!res) return;
       const links: { uid: string; snippet: string }[] = await res.json();
+      if (id !== latest) return;
       results.replaceChildren(
         ...links
           .filter((l) => !session.relations.some((r) => r.uid === l.uid))
@@ -41,10 +44,32 @@ export function openLinkMemo(session: Session, t: (k: string) => string) {
           }),
       );
     };
+    let current = search();
+    const settle = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = 0;
+        current = search();
+      }
+      return current;
+    };
     input.addEventListener("input", () => {
       clearTimeout(timer);
-      timer = window.setTimeout(search, 200);
+      timer = window.setTimeout(settle, 200);
     });
-    void search();
+    root.addEventListener("keydown", async (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        await settle();
+        const buttons = [...results.querySelectorAll<HTMLButtonElement>("button")];
+        const next = buttons.indexOf(document.activeElement as HTMLButtonElement) + (e.key === "ArrowDown" ? 1 : -1);
+        if (next < 0) input.focus();
+        else buttons[Math.min(next, buttons.length - 1)]?.focus();
+      } else if (e.key === "Enter" && document.activeElement === input) {
+        e.preventDefault();
+        await settle();
+        results.querySelector("button")?.click();
+      }
+    });
   });
 }

@@ -4,7 +4,7 @@
 import { $, $$, fromTemplate, post } from "../lib/dom";
 import { icon } from "../lib/icon";
 import { closeAll, openPopup } from "../lib/popup";
-import { toast, toastError } from "../lib/toast";
+import { toastError } from "../lib/toast";
 
 const root = $("[data-page=settings]")!;
 
@@ -207,13 +207,6 @@ function initTags() {
     paint(row);
     refresh();
   });
-  section.addEventListener("keydown", (e) => {
-    const box = (e.target as HTMLElement).closest<HTMLElement>("[role=checkbox]");
-    if (box && (e.key === " " || e.key === "Enter")) {
-      e.preventDefault();
-      box.click();
-    }
-  });
   section.addEventListener("input", (e) => {
     const input = (e.target as HTMLElement).closest<HTMLInputElement>("[data-rule-color]");
     const row = input?.closest<HTMLElement>("[data-rule]");
@@ -244,8 +237,3 @@ function initTags() {
 initLanguage();
 initTags();
 $("[data-refresh]", root)?.addEventListener("click", () => location.reload());
-const flash = sessionStorage.getItem("toast");
-if (flash) {
-  sessionStorage.removeItem("toast");
-  toast(flash);
-}

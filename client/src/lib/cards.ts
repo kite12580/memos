@@ -39,6 +39,24 @@ async function cardAction(card: HTMLElement, path: string, body: unknown) {
 function removeCard(card: HTMLElement) {
   card.remove();
   layoutGrid();
+  void refreshChrome();
+}
+
+/** Brings the sidebar, the comment count and the list's empty state up to date with the server after a write. */
+export async function refreshChrome() {
+  const res = await fetch(location.href, { cache: "no-store" }).catch(() => null);
+  if (!res?.ok) return;
+  const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+  const aside = $("[data-sidebar-header]")?.parentElement;
+  const nextAside = doc.querySelector("#sidebar aside");
+  if (aside && nextAside) {
+    aside.replaceChildren(...nextAside.childNodes);
+    formatTimes(aside);
+  }
+  const head = doc.querySelector("[data-comments-head]");
+  if (head) $("[data-comments-head]")?.replaceWith(head);
+  const empty = doc.querySelector("#memo-list [data-empty]");
+  if (empty && !$("#memo-list [data-card], #memo-list [data-empty]")) $("#memo-list [data-leading]")?.append(empty);
 }
 
 export async function pin(card: HTMLElement, on: boolean) {
@@ -50,8 +68,14 @@ export async function archive(card: HTMLElement, on: boolean) {
   const uid = card.dataset.card!;
   try {
     await post(`/memos/${uid}/archive`, { on });
-    if (card.closest("#memo-list")) removeCard(card);
-    else location.reload();
+    const done = on ? strings.archived : strings.restored;
+    if (card.closest("#memo-list")) {
+      removeCard(card);
+      toast(done);
+    } else {
+      sessionStorage.setItem("toast", done);
+      location.reload();
+    }
   } catch (e) {
     toastError(e);
   }
@@ -129,22 +153,36 @@ export function openMemoMenu(trigger: HTMLElement) {
   });
 }
 
-/** Folds memos taller than memos' 420px trigger behind "Show more", measured now that the browser laid them out. */
+const clampObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    clampObserver.unobserve(entry.target);
+    measureClamp(entry.target as HTMLElement);
+  }
+});
+
+/**
+ * Folds memos taller than memos' 420px trigger behind "Show more". Cards in the
+ * list skip layout until they near the screen (`content-visibility: auto`), so
+ * each is measured when it first comes into view.
+ */
 export function initClamps(root: ParentNode = document) {
-  for (const section of $$("[data-clamp]", root)) {
-    const inner = section.firstElementChild as HTMLElement | null;
-    if (!inner || section.dataset.expanded) continue;
-    const tall = inner.offsetHeight > 420;
-    const button = section.parentElement?.querySelector<HTMLButtonElement>(":scope > [data-action=clamp]");
-    section.classList.toggle("overflow-hidden", tall);
-    section.classList.toggle("max-h-[360px]", tall);
-    section.querySelector("[data-fade]")?.toggleAttribute("hidden", !tall);
-    if (tall && !button) {
-      section.insertAdjacentHTML("afterend", clampButton(false));
-      if (!section.querySelector("[data-fade]")) section.insertAdjacentHTML("beforeend", FADE);
-    } else if (!tall) {
-      button?.remove();
-    }
+  for (const section of $$("[data-clamp]", root)) clampObserver.observe(section);
+}
+
+function measureClamp(section: HTMLElement) {
+  const inner = section.firstElementChild as HTMLElement | null;
+  if (!inner || section.dataset.expanded) return;
+  const tall = inner.offsetHeight > 420;
+  const button = section.parentElement?.querySelector<HTMLButtonElement>(":scope > [data-action=clamp]");
+  section.classList.toggle("overflow-hidden", tall);
+  section.classList.toggle("max-h-[360px]", tall);
+  section.querySelector("[data-fade]")?.toggleAttribute("hidden", !tall);
+  if (tall && !button) {
+    section.insertAdjacentHTML("afterend", clampButton(false));
+    if (!section.querySelector("[data-fade]")) section.insertAdjacentHTML("beforeend", FADE);
+  } else if (!tall) {
+    button?.remove();
   }
 }
 

@@ -8,7 +8,7 @@ import { icon } from "../lib/icon";
 import { closeAll, openPopup } from "../lib/popup";
 import { formatTimes } from "../lib/time";
 import { toastError } from "../lib/toast";
-import { articleOf, initClamps, replaceCard } from "../lib/cards";
+import { articleOf, initClamps, refreshChrome, replaceCard } from "../lib/cards";
 import { layoutGrid } from "../lib/list";
 import { MEMO_EDITOR_THEME, MEMO_FOCUS_EDITOR_THEME, memoEditorLabels, memoExtensions, memoResolveUrl, memoSanitizeHtml, memoTagOptions } from "../memos/memo-markdown";
 import { MEMO_MARKDOWN } from "../memos/memo-ast";
@@ -18,6 +18,12 @@ import { type Uploaded, uploadFile } from "./upload";
 
 declare const RENDER_VERSION: string;
 
+
+interface Saved {
+  content: string;
+  attachments: string[];
+  relations: string[];
+}
 
 export interface Relation {
   uid: string;
@@ -53,13 +59,13 @@ export class Session {
   rev?: number;
   saving = false;
 
-  constructor(readonly el: HTMLElement, readonly onDone: (html: string) => void, readonly onCancel?: () => void) {}
+  constructor(readonly el: HTMLElement, readonly onDone: (html: string, saved: Saved) => void, readonly onCancel?: () => void) {}
 
   get extras() {
     return $("[data-composer-extras]", this.el)!;
   }
 
-  mount(markdown: string) {
+  mount(markdown: string, focus = true) {
     const holder = $(".memo-editor-root", this.el)!;
     const element = document.createElement("div");
     holder.replaceWith(element);
@@ -92,7 +98,7 @@ export class Session {
       attributes: { autocorrect: "on", autocapitalize: "on", spellcheck: "true" },
       onChange: () => this.changed(),
       onSubmit: () => void this.save(),
-      autofocus: "end",
+      autofocus: focus && "end",
     });
     element.classList.add("memo-editor-root");
     this.el.dataset.ready = "1";
@@ -194,7 +200,7 @@ export class Session {
       const res = this.uid ? await post(`/memos/${this.uid}${inList}`, body) : await post(`/memos${inList}`, body);
       const card = await res.text();
       if (this.el.dataset.composer === "create") localStorage.removeItem(DRAFT_KEY);
-      this.onDone(card);
+      this.onDone(card, body);
     } catch (e) {
       toastError(e);
     } finally {
@@ -203,10 +209,17 @@ export class Session {
     }
   }
 
-  reset() {
-    this.editor.setMarkdown("");
-    this.attachments = [];
-    this.relations = [];
+  /** Clears what was just saved, keeping anything written or attached while the save was in flight. */
+  reset(saved: Saved) {
+    const now = this.editor.getMarkdown();
+    const done = saved.content.trimEnd();
+    if (now.trimEnd() === done) this.editor.setMarkdown("");
+    else if (now.startsWith(done)) {
+      this.editor.setMarkdown(now.slice(done.length).trimStart());
+      this.editor.focus();
+    }
+    this.attachments = this.attachments.filter((a) => !saved.attachments.includes(a.uid));
+    this.relations = this.relations.filter((r) => !saved.relations.includes(r.uid));
     this.createdTs = undefined;
     this.renderExtras();
     this.changed();
@@ -246,7 +259,10 @@ function insertCard(html: string, composer: HTMLElement) {
     list?.prepend(wrap);
   } else {
     const leading = $("#memo-list [data-leading]");
-    const firstUnpinned = $$("#memo-list [data-card]").find((c) => !articleOf(c).hasAttribute("data-pinned"));
+    const firstUnpinned = $$("#memo-list [data-card]")
+      .filter((c) => !articleOf(c).hasAttribute("data-pinned"))
+      .sort((a, b) => Number(a.dataset.i ?? 0) - Number(b.dataset.i ?? 0))[0];
+    $("#memo-list [data-empty]")?.remove();
     if (firstUnpinned) firstUnpinned.before(card);
     else if (leading) leading.after(card);
     layoutGrid();
@@ -255,18 +271,31 @@ function insertCard(html: string, composer: HTMLElement) {
   initClamps(card);
 }
 
+const activating = new WeakMap<HTMLElement, Promise<Session>>();
+
 /** Turns a server-rendered composer into a live editor, keeping what was typed before it loaded. */
-export async function activate(composer: HTMLElement) {
-  if (sessions.has(composer)) return sessions.get(composer)!;
+export function activate(composer: HTMLElement, focus = true): Promise<Session> {
+  const live = sessions.get(composer);
+  if (live) return Promise.resolve(live);
+  let session = activating.get(composer);
+  if (!session) {
+    session = start(composer, focus);
+    activating.set(composer, session);
+  }
+  return session;
+}
+
+async function start(composer: HTMLElement, focus: boolean) {
   await ready;
   const typed = $(".memo-editor-root", composer)?.innerText.trim() ?? "";
   const draft = composer.dataset.composer === "create" ? (localStorage.getItem(DRAFT_KEY) ?? "") : "";
-  const session = new Session(composer, (html) => {
+  const session = new Session(composer, (html, saved) => {
     insertCard(html, composer);
-    session.reset();
+    session.reset(saved);
+    void refreshChrome();
   });
   sessions.set(composer, session);
-  session.mount(typed || draft);
+  session.mount([draft.trim(), typed].filter(Boolean).join("\n\n"), focus || composer.contains(document.activeElement));
   composer.addEventListener("click", (e) => {
     const action = (e.target as HTMLElement).closest<HTMLElement>("[data-action=save]");
     if (action) void session.save();
@@ -295,7 +324,14 @@ export async function editCard(card: HTMLElement) {
   const restore = () => {
     article.replaceChildren(...saved);
   };
-  const session = new Session(composer, (html) => replaceCard(card, html), restore);
+  const session = new Session(
+    composer,
+    (html) => {
+      replaceCard(card, html);
+      void refreshChrome();
+    },
+    restore,
+  );
   session.uid = uid;
   session.rev = src.rev;
   session.createdTs = src.createdTs;

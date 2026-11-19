@@ -9,7 +9,7 @@
 <div class="pt-8 pb-16 w-full" data-memo-comments-section="true">
 <h2 id="memo-comments" class="mu-visually-hidden">{{ c.t.s("memo.comment.self") }}</h2>
 <div class="relative mx-auto grow w-full min-h-full flex flex-col justify-start items-start gap-y-1">
-<div class="w-full flex flex-row justify-between items-center h-8 pl-3 mb-2">
+<div data-comments-head="" class="w-full flex flex-row justify-between items-center h-8 pl-3 mb-2">
 <div class="flex flex-row justify-start items-center">{{ h::icon("message-circle", "mu-icon w-5 h-auto text-mu-text-secondary mr-1") }}<span class="text-mu-text-secondary mu-body">{{ c.t.s("memo.comment.self") }}</span>{% if !comments.is_empty() %}<span class="text-mu-text-secondary mu-caption tabular-nums ml-1.5">{{ comments.len() }}</span>{% endif %}</div>
 {%- if !card.archived %}<button type="button" data-action="write-comment" class="mu-button mu-button-ghost mu-base mu-s-md mu-focus"><span class="mu-button-label">{{ c.t.s("memo.comment.write-a-comment") }}</span></button>{% endif %}
 </div>

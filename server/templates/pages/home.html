@@ -22,9 +22,9 @@
 </div>
 {%- endif %}
 {%- if list.cards.is_empty() && !filters.is_empty() %}
-<div class="flex w-full flex-wrap items-center justify-center gap-x-1 py-10 mu-body text-mu-text-secondary"><span>{{ c.t.s("memo.no-matching-memos") }}</span><span aria-hidden="true">·</span><a href="{{ clear_href }}" class="mu-link mu-focus">{{ c.t.s("memo.clear-filters") }}</a></div>
+<div data-empty="" class="flex w-full flex-wrap items-center justify-center gap-x-1 py-10 mu-body text-mu-text-secondary"><span>{{ c.t.s("memo.no-matching-memos") }}</span><span aria-hidden="true">·</span><a href="{{ clear_href }}" class="mu-link mu-focus">{{ c.t.s("memo.clear-filters") }}</a></div>
 {%- else if list.cards.is_empty() %}
-<div class="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-8 text-center w-full"><div class="w-full max-w-80 shrink-0">{% include "partials/ink.html" %}</div><p class="mt-1 mu-body text-mu-text-secondary">{{ c.t.s("message.no-data") }}</p></div>
+<div data-empty="" class="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-8 text-center w-full"><div class="w-full max-w-80 shrink-0">{% include "partials/ink.html" %}</div><p class="mt-1 mu-body text-mu-text-secondary">{{ c.t.s("message.no-data") }}</p></div>
 {%- endif %}
 </div>
 {% include "partials/memo_list.html" %}

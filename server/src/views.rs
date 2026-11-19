@@ -204,6 +204,8 @@ impl Ctx<'_> {
             "linkCopied": t.s("message.succeed-copy-link"),
             "contentCopied": t.s("message.succeed-copy-content"),
             "deleted": t.s("message.deleted-successfully"),
+            "archived": t.s("message.archived-successfully"),
+            "restored": t.s("message.restored-successfully"),
             "error": t.s("error.title"),
             "close": t.s("common.close"),
             "showMore": t.s("memo.show-more"),

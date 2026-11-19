@@ -294,8 +294,3 @@ const fromHash = () => {
 };
 addEventListener("hashchange", fromHash);
 fromHash();
-const flash = sessionStorage.getItem("toast");
-if (flash) {
-  sessionStorage.removeItem("toast");
-  toast(flash);
-}

@@ -7,7 +7,7 @@ import { formatTimes } from "./lib/time";
 import { closeAll, closeDialog, enter, initPopups, isOpenFor, openDialog, openPopup, openTemplate } from "./lib/popup";
 import * as cards from "./lib/cards";
 import { initList } from "./lib/list";
-import { toastError } from "./lib/toast";
+import { toast, toastError } from "./lib/toast";
 import { initTooltips } from "./lib/tooltip";
 import { icon } from "./lib/icon";
 
@@ -144,9 +144,13 @@ function preview(el: HTMLElement) {
   overlay.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/92 cursor-zoom-out";
   overlay.innerHTML = '<img class="max-h-[calc(100dvh-8rem)] max-w-[calc(100vw-1.5rem)] rounded-mu-md object-contain select-none sm:max-h-[calc(100dvh-7rem)] sm:max-w-[calc(100vw-8rem)]" alt="">';
   overlay.querySelector("img")!.src = src;
-  const close = () => overlay.remove();
+  const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+  const close = () => {
+    overlay.remove();
+    removeEventListener("keydown", onKey);
+  };
   overlay.addEventListener("click", close);
-  addEventListener("keydown", (e) => e.key === "Escape" && close(), { once: true });
+  addEventListener("keydown", onKey);
   document.body.append(overlay);
 }
 
@@ -272,6 +276,8 @@ document.addEventListener("click", (e) => {
   if (target.matches(".mu-dialog-backdrop, .mu-dialog-viewport")) return closeDialog(target);
   const checkbox = target.closest<HTMLInputElement>(".memo-content-root input.mbe-checkbox");
   if (checkbox) return void cards.toggleTask(checkbox);
+  const tag = target.closest<HTMLElement>(".memo-content-root [data-tag][role=button]");
+  if (tag) return void location.assign(`${document.body.dataset.base}/?q=${encodeURIComponent(`#${tag.dataset.tag}`)}`);
   const sub = target.closest<HTMLElement>("[data-submenu]");
   if (sub) return void openTemplate(sub, sub.dataset.submenu!, "inline-end", "start");
   const select = target.closest<HTMLElement>("[data-select]");
@@ -299,6 +305,11 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "k") {
     e.preventDefault();
     openSearch();
+  }
+  const target = e.target as HTMLElement;
+  if ((e.key === "Enter" || e.key === " ") && target.matches("[role=button], [role=switch], [role=checkbox]")) {
+    e.preventDefault();
+    target.click();
   }
 });
 
@@ -339,7 +350,14 @@ initList();
 initResize();
 renderStale();
 document.addEventListener("memos:cards", renderStale);
-if (location.hash === "#compose") $("[data-composer=create] [contenteditable]")?.focus();
+const composer = $("[data-composer=create]");
+if (composer && location.hash === "#compose") $("[contenteditable]", composer)?.focus();
+else if (composer && localStorage.getItem("memos-lite-draft")?.trim()) void editor().then((m) => m.activate(composer, false));
+const flash = sessionStorage.getItem("toast");
+if (flash) {
+  sessionStorage.removeItem("toast");
+  toast(flash);
+}
 
 const pages: Record<string, () => Promise<unknown>> = {
   calendar: () => import("./pages/calendar"),
