@@ -1,6 +1,6 @@
 services:
   memos-lite:
-    build: .
+    image: ghcr.io/kite12580/memos:latest
     container_name: memos-lite
     ports:
       - "5230:5230"

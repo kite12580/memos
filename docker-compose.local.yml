@@ -1,12 +1,6 @@
-# ARCH=arm64 or ARCH=amd64
-# build: docker buildx build --platform linux/$ARCH -t memos-lite --load . && docker save memos-lite | gzip > memos-lite-$ARCH.tar.gz
-# load:  gunzip -c memos-lite-$ARCH.tar.gz | docker load
-# run:   mkdir -p data && docker compose -f docker-compose.local.yml up -d
-
 services:
   memos-lite:
-    image: memos-lite
-    pull_policy: never
+    build: .
     container_name: memos-lite
     ports:
       - "5230:5230"

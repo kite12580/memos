@@ -21,15 +21,13 @@ Tailscale, Cloudflare Access, …).
 
 ```sh
 mkdir -p data
-docker compose up -d   # builds the image, serves on :5230
+docker compose up -d   # pulls ghcr.io/kite12580/memos:latest, serves on :5230
 ```
 
-For another machine, build its architecture and copy the image over (see
-`docker-compose.local.yml`):
+To build the image from source instead:
 
 ```sh
-docker buildx build --platform linux/arm64 -t memos-lite --load .
-docker save memos-lite | gzip > memos-lite-arm64.tar.gz
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 ## Configuration
