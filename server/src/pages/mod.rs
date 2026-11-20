@@ -614,6 +614,7 @@ pub fn attachment_json(base: &str, a: &atts::Attachment) -> serde_json::Value {
         "thumb": v::thumb_url(base, a),
         "width": a.width,
         "height": a.height,
+        "motionGroup": a.motion.as_ref().map(|m| &m.group),
     })
 }
 

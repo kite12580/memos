@@ -1,7 +1,7 @@
 // The attachment library: more of a section as it scrolls into view, and
 // deleting every unused upload.
 
-import { $, $$, fromHTML, post, reload } from "../lib/dom";
+import { $, $$, type HttpError, fromHTML, post, reload } from "../lib/dom";
 import { closeLayer, openDialog } from "../lib/popup";
 import { formatTimes } from "../lib/time";
 import { toast, toastError } from "../lib/toast";
@@ -69,7 +69,11 @@ export default function init(signal: AbortSignal) {
       $("[data-action=dialog-ok]", dialog)!.addEventListener("click", async () => {
         closeLayer(dialog);
         try {
-          for (const row of $$("[data-unused]", root)) await post(`/attachments/${row.dataset.unused}/delete`);
+          for (const row of $$("[data-unused]", root)) {
+            await post(`/attachments/${row.dataset.unused}/delete`).catch((e) => {
+              if ((e as HttpError).status !== 404) throw e;
+            });
+          }
           toast(button.dataset.done!);
           reload();
         } catch (e) {

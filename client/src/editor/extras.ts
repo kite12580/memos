@@ -65,14 +65,21 @@ function place(list: HTMLElement, item: HTMLElement, position: number) {
   slide(before);
 }
 
+function members(session: Session, uid: string) {
+  const a = session.attachments.find((x) => x.uid === uid);
+  return session.attachments.filter((x) => x === a || (a?.motionGroup && x.motionGroup === a.motionGroup));
+}
+
 /** memos' `moveGroup`: the moved item takes the place of the one it landed on. */
 function commit(session: Session, key: string, target: string) {
   const all = session.attachments;
-  const from = all.findIndex((a) => a.uid === key);
-  const to = all.findIndex((a) => a.uid === target);
-  if (from < 0 || to < 0 || from === to) return;
-  const [moved] = all.splice(from, 1);
-  all.splice(to, 0, moved);
+  const moved = members(session, key);
+  const landed = members(session, target);
+  if (!moved.length || !landed.length || moved.includes(landed[0])) return;
+  const forward = all.indexOf(moved[0]) < all.indexOf(landed[0]);
+  const rest = all.filter((a) => !moved.includes(a));
+  rest.splice(forward ? rest.indexOf(landed[landed.length - 1]) + 1 : rest.indexOf(landed[0]), 0, ...moved);
+  all.splice(0, all.length, ...rest);
 }
 
 function ghostOf(item: HTMLElement, rect: DOMRect, rows: boolean) {
@@ -267,9 +274,10 @@ export function wireExtras(session: Session) {
 
   const act = (action: string, uid: string, trigger: HTMLElement) => {
     const a = session.attachments.find((x) => x.uid === uid);
+    const group = members(session, uid);
     switch (action) {
       case "remove":
-        session.attachments = session.attachments.filter((x) => x.uid !== uid);
+        session.attachments = session.attachments.filter((x) => !group.includes(x));
         break;
       case "unlink":
         session.relations = session.relations.filter((r) => r.uid !== uid);
@@ -277,7 +285,7 @@ export function wireExtras(session: Session) {
       case "insert":
         if (!a) return;
         session.insertImages([a]);
-        session.attachments = session.attachments.filter((x) => x !== a);
+        session.attachments = session.attachments.filter((x) => !group.includes(x));
         break;
       case "markup":
         if (a) void import("./draw").then((m) => m.openDrawing(session, t, a));

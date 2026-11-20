@@ -17,6 +17,7 @@ pub struct Tile {
     pub thumb: String,
     pub full: String,
     pub video: bool,
+    pub live: Option<v::Live>,
     pub drawing: bool,
     pub image: bool,
     pub new: bool,
@@ -153,24 +154,32 @@ fn link(l: &MemoLink, now: i64, tz: &TimeZone) -> Link {
 }
 
 fn split(c: &Ctx, list: &[Attachment], memo_id: Option<i64>) -> (Vec<Tile>, Vec<Row>) {
-    let visuals = list.iter().filter(|a| matches!(a.kind, Kind::Image | Kind::Video)).count();
+    let is_new = |a: &Attachment| a.memo_id.is_none() || a.memo_id != memo_id;
+    let visuals: Vec<&Attachment> = list.iter().filter(|a| matches!(a.kind, Kind::Image | Kind::Video)).collect();
+    let items = v::visual_items(c.base, &visuals);
+    let count = items.len();
     let mut tiles = vec![];
+    for item in items {
+        let a = item.a;
+        let plain = a.kind == Kind::Image && item.live.is_none();
+        tiles.push(Tile {
+            uid: a.uid.clone(),
+            name: a.filename.clone(),
+            preview_label: c.t.f("common.preview-name", &[("name", &a.filename)]),
+            thumb: v::thumb_url(c.base, a),
+            full: v::file_url(c.base, a),
+            video: a.kind == Kind::Video && item.live.is_none(),
+            drawing: plain && a.filename.to_ascii_lowercase().ends_with(DRAWING_SUFFIX),
+            image: a.kind == Kind::Image,
+            live: item.live,
+            new: is_new(a),
+            cell: if count == 3 && tiles.is_empty() { " row-span-2" } else { "" },
+        });
+    }
     let mut rows = vec![];
     for a in list {
-        let new = a.memo_id.is_none() || a.memo_id != memo_id;
+        let new = is_new(a);
         if matches!(a.kind, Kind::Image | Kind::Video) {
-            tiles.push(Tile {
-                uid: a.uid.clone(),
-                name: a.filename.clone(),
-                preview_label: c.t.f("common.preview-name", &[("name", &a.filename)]),
-                thumb: v::thumb_url(c.base, a),
-                full: v::file_url(c.base, a),
-                video: a.kind == Kind::Video,
-                drawing: a.kind == Kind::Image && a.filename.to_ascii_lowercase().ends_with(DRAWING_SUFFIX),
-                image: a.kind == Kind::Image,
-                new,
-                cell: if visuals == 3 && tiles.is_empty() { " row-span-2" } else { "" },
-            });
             continue;
         }
         let voice = if a.kind == Kind::Audio { recording_time(&a.filename) } else { None };

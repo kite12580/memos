@@ -142,10 +142,13 @@ document.addEventListener("pointerover", (e) => {
 });
 
 // Typing in the server-rendered composer works at once; the editor takes over its text when it loads.
-for (const type of ["pointerdown", "focusin"]) {
+for (const type of ["pointerdown", "focusin", "pointerover"]) {
   document.addEventListener(type, (e) => {
-    const composer = (e.target as HTMLElement).closest<HTMLElement>("[data-composer]");
-    if (composer && !composer.dataset.ready) editor().then((m) => m.activate(composer));
+    const target = e.target as HTMLElement;
+    const live = target.closest<HTMLElement>("[data-live]");
+    if (live) return void import("./live").then((m) => m.bind(live, e));
+    const composer = target.closest<HTMLElement>("[data-composer]");
+    if (composer && !composer.dataset.ready && type != "pointerover") editor().then((m) => m.activate(composer));
   });
 }
 

@@ -198,7 +198,7 @@ fn summarize(c: &Ctx, memos: &[DayMemo]) -> BTreeMap<String, Summary> {
             s.excerpt = content::excerpt(&m.content);
         }
         if s.file.is_none() {
-            s.file = m.files.iter().find(|a| a.kind != Kind::Image).map(|a| a.filename.clone());
+            s.file = m.files.iter().find(|a| a.kind != Kind::Image && a.motion.is_none()).map(|a| a.filename.clone());
         }
         if s.images.len() < MAX_IMAGES {
             let attached = m.files.iter().filter(|a| a.kind == Kind::Image).map(|a| v::thumb_url(c.base, a));

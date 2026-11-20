@@ -4,6 +4,7 @@
 use crate::db::attachments::{Attachment, Kind};
 use crate::db::memos::Memo;
 use crate::db::views::TagMeta;
+use crate::motion::Role;
 use crate::h::{self, Html};
 use crate::http::{Request, encode_component};
 use crate::i18n::T;
@@ -649,9 +650,53 @@ pub struct Visual {
     pub full: String,
     pub alt: String,
     pub video: bool,
+    pub live: Option<Live>,
     pub size: Option<(i64, i64)>,
     pub class: &'static str,
     pub overlay: String,
+}
+
+pub struct Live {
+    pub url: String,
+    pub pts: i64,
+}
+
+pub struct VisualItem<'a> {
+    pub a: &'a Attachment,
+    pub members: Vec<&'a Attachment>,
+    pub live: Option<Live>,
+}
+
+/// memos' buildAttachmentVisualItems: a Live Photo whose still and video are
+/// both here is one item, an Android motion photo is one, and the members of
+/// an incomplete group show as they are.
+pub fn visual_items<'a>(base: &str, list: &[&'a Attachment]) -> Vec<VisualItem<'a>> {
+    let single = |a| VisualItem { a, members: vec![a], live: None };
+    let mut groups: Vec<&str> = vec![];
+    let mut out = vec![];
+    for &a in list {
+        let Some(m) = &a.motion else {
+            out.push(single(a));
+            continue;
+        };
+        if m.role == Role::Container {
+            out.push(VisualItem { a, members: vec![a], live: Some(Live { url: format!("{}?motion=true", file_url(base, a)), pts: m.presentation_us }) });
+            continue;
+        }
+        if groups.contains(&m.group.as_str()) {
+            continue;
+        }
+        groups.push(&m.group);
+        let group: Vec<&Attachment> = list.iter().copied().filter(|b| b.motion.as_ref().is_some_and(|n| n.group == m.group)).collect();
+        let role = |r| group.iter().copied().find(|b| b.motion.as_ref().is_some_and(|n| n.role == r));
+        if let (Some(still), Some(video), 2) = (role(Role::Still), role(Role::Video), group.len()) {
+            out.push(VisualItem { a: still, members: vec![still, video], live: Some(Live { url: file_url(base, video), pts: 0 }) });
+            continue;
+        }
+        out.push(single(a));
+        out.extend(group.into_iter().filter(|b| b.uid != a.uid).map(single));
+    }
+    out
 }
 
 pub struct Gallery {
@@ -786,13 +831,15 @@ pub fn file_row(base: &str, a: &Attachment) -> FileRow {
     }
 }
 
-fn visual(base: &str, a: &Attachment, class: &'static str) -> Visual {
+fn visual(base: &str, item: VisualItem, class: &'static str) -> Visual {
+    let a = item.a;
     Visual {
         uid: a.uid.clone(),
         thumb: thumb_url(base, a),
         full: file_url(base, a),
         alt: a.filename.clone(),
-        video: a.kind == Kind::Video,
+        video: a.kind == Kind::Video && item.live.is_none(),
+        live: item.live,
         size: a.width.zip(a.height),
         class,
         overlay: String::new(),
@@ -801,15 +848,17 @@ fn visual(base: &str, a: &Attachment, class: &'static str) -> Visual {
 
 /// memos' gallery: one item alone, two side by side, three as a mosaic,
 /// four in a square, and up to six in two rows with `+N` on the last.
-fn gallery(base: &str, items: &[&Attachment]) -> (Option<Visual>, Option<Gallery>) {
-    match items.len() {
+fn gallery(base: &str, items: Vec<VisualItem>) -> (Option<Visual>, Option<Gallery>) {
+    let n = items.len();
+    let mut items = items.into_iter();
+    match n {
         0 => (None, None),
-        1 => (Some(visual(base, items[0], "")), None),
+        1 => (items.next().map(|a| visual(base, a, "")), None),
         2 => (
             None,
             Some(Gallery {
                 class: "grid grid-cols-2 gap-2 h-[11rem] sm:h-[13rem] md:h-[15rem]",
-                cells: items.iter().map(|a| visual(base, a, "")).collect(),
+                cells: items.map(|a| visual(base, a, "")).collect(),
             }),
         ),
         3 => (
@@ -817,7 +866,6 @@ fn gallery(base: &str, items: &[&Attachment]) -> (Option<Visual>, Option<Gallery
             Some(Gallery {
                 class: "grid grid-cols-2 grid-rows-2 gap-2 h-[13rem] sm:h-[16rem] md:h-[18rem]",
                 cells: items
-                    .iter()
                     .enumerate()
                     .map(|(i, a)| visual(base, a, if i == 0 { "row-span-2" } else { "" }))
                     .collect(),
@@ -827,11 +875,11 @@ fn gallery(base: &str, items: &[&Attachment]) -> (Option<Visual>, Option<Gallery
             None,
             Some(Gallery {
                 class: "grid grid-cols-2 grid-rows-2 gap-2 h-[13rem] sm:h-[16rem] md:h-[18rem]",
-                cells: items.iter().map(|a| visual(base, a, "")).collect(),
+                cells: items.map(|a| visual(base, a, "")).collect(),
             }),
         ),
         n => {
-            let mut cells: Vec<Visual> = items.iter().take(6).map(|a| visual(base, a, "")).collect();
+            let mut cells: Vec<Visual> = items.take(6).map(|a| visual(base, a, "")).collect();
             if n > 6
                 && let Some(last) = cells.last_mut()
             {
@@ -878,7 +926,9 @@ pub fn card(c: &Ctx, m: &Memo, d: &CardData, in_list: bool) -> Card {
         .iter()
         .filter(|a| matches!(a.kind, Kind::Image | Kind::Video))
         .collect();
-    let (gallery_single, gallery) = gallery(c.base, &visuals);
+    let visuals = visual_items(c.base, &visuals);
+    let visual_count = visuals.len();
+    let (gallery_single, gallery) = gallery(c.base, visuals);
     let audio: Vec<FileRow> = atts
         .iter()
         .filter(|a| a.kind == Kind::Audio)
@@ -918,7 +968,7 @@ pub fn card(c: &Ctx, m: &Memo, d: &CardData, in_list: bool) -> Card {
     if m.updated_ts != m.created_ts {
         time_title.push_str(&format!("\n{}: {}", c.t.s("common.last-updated-at"), local(m.updated_ts, tz)));
     }
-    let estimate = estimate(m, visuals.len(), audio.len() + files.len() + refs.len());
+    let estimate = estimate(m, visual_count, audio.len() + files.len() + refs.len());
     let mut comments: Vec<CommentRow> = d
         .comments
         .get(&m.id)

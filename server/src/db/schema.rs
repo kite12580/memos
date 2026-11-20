@@ -99,6 +99,9 @@ CREATE TRIGGER memo_fts_update AFTER UPDATE OF content ON memo BEGIN
 END;
 "#, r#"
 ALTER TABLE attachment ADD COLUMN media TEXT;
+"#, r#"
+ALTER TABLE attachment ADD COLUMN motion TEXT;
+CREATE INDEX attachment_motion_group ON attachment(motion ->> 'group') WHERE motion IS NOT NULL;
 "#];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

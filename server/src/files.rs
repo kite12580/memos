@@ -6,6 +6,7 @@ use crate::app::{App, server_error};
 use crate::db::attachments::{self as atts, NewAttachment};
 use crate::db::new_uid;
 use crate::http::{BODY_TIMEOUT, BodyStream, ByteRange, Request, Response, encode_component, parse_range};
+use crate::motion::Motion;
 use bytes::BytesMut;
 use http_body_util::BodyExt;
 use std::path::{Path, PathBuf};
@@ -104,8 +105,16 @@ fn sane_name(name: &str) -> String {
     if name.trim().is_empty() { "file".into() } else { name }
 }
 
-/// `POST /attachments?name=…&type=…[&w=…&h=…][&media=…]` with the file as the body;
-/// `media` is the JSON `media::sanitize` takes.
+async fn detect_motion(file: PathBuf, size: u64) -> Option<crate::motion::Detection> {
+    tokio::task::spawn_blocking(move || crate::motion::detect(&mut std::fs::File::open(file).ok()?, size).ok().flatten())
+        .await
+        .ok()
+        .flatten()
+}
+
+/// `POST /attachments?name=…&type=…[&w=…&h=…][&media=…][&motion=still|video&group=…]`
+/// with the file as the body; `media` is the JSON `media::sanitize` takes, and
+/// `motion` with `group` makes the file one half of an Apple Live Photo.
 pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
     let name = sane_name(&req.query("name").unwrap_or_default());
     let mime = req
@@ -115,11 +124,21 @@ pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
     let dim = |k: &str| req.query(k).and_then(|v| v.parse::<i64>().ok()).filter(|v| *v > 0);
     let (width, height) = (dim("w"), dim("h"));
     let media = req.query("media").and_then(|m| crate::media::sanitize(&m, &mime, width.is_some()));
+    let mut motion = match (req.query("motion"), req.query("group")) {
+        (None, _) => None,
+        (Some(role), group) => match Motion::from_client(&role, &group.unwrap_or_default()) {
+            Some(m) => Some(m),
+            None => return Response::error(400, "invalid motion media"),
+        },
+    };
     let uid = new_uid();
     let size = match save(&mut req, &path(app, &uid, false), app.cfg.max_upload).await {
         Ok(s) => s,
         Err(res) => return res,
     };
+    if motion.is_none() && matches!(mime.as_str(), "image/jpeg" | "image/jpg") {
+        motion = detect_motion(path(app, &uid, false), size).await.map(|d| Motion::container(&uid, d));
+    }
     let now = (app.now)();
     let uid2 = uid.clone();
     let res = app
@@ -136,6 +155,7 @@ pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
                     height,
                     created_ts: now,
                     media,
+                    motion,
                 },
             )
         })
@@ -175,13 +195,15 @@ pub async fn upload_thumb(app: &Arc<App>, mut req: Request, uid: &str) -> Respon
 
 pub async fn delete(app: &Arc<App>, uid: &str) -> Response {
     let uid_owned = uid.to_string();
-    match app.db.with(move |c| atts::delete(c, &uid_owned)).await {
-        Ok(true) => {
-            remove_files(app, uid);
+    match app.db.tx(move |c| atts::delete(c, &uid_owned)).await {
+        Ok(uids) if uids.is_empty() => Response::not_found(),
+        Ok(uids) => {
+            for uid in &uids {
+                remove_files(app, uid);
+            }
             app.changed();
             Response::new(204)
         }
-        Ok(false) => Response::not_found(),
         Err(e) => e.into(),
     }
 }
@@ -215,6 +237,14 @@ pub async fn serve(app: &Arc<App>, req: &Request, uid: &str, thumb: bool) -> Res
         Ok(None) => return Response::not_found(),
         Err(e) => return e.into(),
     };
+    let clip = if !thumb && req.query("motion").as_deref() == Some("true") {
+        match a.motion.as_ref().and_then(|m| m.video_start) {
+            Some(start) => Some(start),
+            None => return Response::error(400, "attachment does not have motion clip"),
+        }
+    } else {
+        None
+    };
     let file_path = path(app, uid, thumb && a.has_thumb);
     let Ok(mut file) = tokio::fs::File::open(&file_path).await else {
         return Response::not_found();
@@ -222,14 +252,23 @@ pub async fn serve(app: &Arc<App>, req: &Request, uid: &str, thumb: bool) -> Res
     let Ok(meta) = file.metadata().await else {
         return Response::not_found();
     };
-    let size = meta.len();
-    let mime = if thumb && a.has_thumb { "image/webp".to_string() } else { a.mime.clone() };
+    let offset = clip.unwrap_or(0).min(meta.len());
+    let size = meta.len() - offset;
+    let mime = if clip.is_some() {
+        "video/mp4".to_string()
+    } else if thumb && a.has_thumb {
+        "image/webp".to_string()
+    } else {
+        a.mime.clone()
+    };
     let mut res = Response::new(200)
         .with("content-type", &mime)
         .with("cache-control", "private, max-age=31536000, immutable")
         .with("accept-ranges", "bytes")
         .with("x-content-type-options", "nosniff");
-    if !thumb {
+    if clip.is_some() {
+        res.set("content-disposition", &format!("inline; filename=\"{}.mp4\"", a.uid));
+    } else if !thumb {
         if inline(&mime) {
             res.set("content-disposition", &format!("inline; filename*=UTF-8''{}", encode_component(&a.filename)));
         } else {
@@ -252,7 +291,7 @@ pub async fn serve(app: &Arc<App>, req: &Request, uid: &str, thumb: bool) -> Res
     if req.method == "HEAD" {
         return res;
     }
-    if start > 0 && file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
+    if start + offset > 0 && file.seek(std::io::SeekFrom::Start(start + offset)).await.is_err() {
         return Response::internal_error();
     }
     res.stream(read_stream(file, len))
