@@ -34,7 +34,7 @@ test("changes theme, language and display preferences", async ({ page }) => {
   await expect(page.getByRole("switch", { name: "Compact mode" })).toHaveAttribute("aria-checked", "true");
 });
 
-test("sets the account's nickname and avatar, and the server's name and icon", async ({ page }) => {
+test("sets the account's nickname and avatar, and the server's name and icon", async ({ page, request }) => {
   await page.goto("/settings");
   await page.locator("[data-edit-account]").click();
   const account = page.getByRole("dialog", { name: "Update Information" });
@@ -49,6 +49,11 @@ test("sets the account's nickname and avatar, and the server's name and icon", a
   await page.locator("[data-popup=brand]").first().click();
   await expect(page.locator(".mu-positioner")).toContainText("Sam");
   await page.keyboard.press("Escape");
+
+  await page.goto(`/memos/${await memo(request, "by Sam")}`);
+  const creator = page.locator("[data-slot=memo-header-meta]").first();
+  await expect(creator).toContainText("Sam");
+  await expect(creator.locator("img")).toHaveAttribute("src", /\/avatar\?v=/);
 
   await page.goto("/settings#system");
   await page.locator("[data-edit-profile]").click();
