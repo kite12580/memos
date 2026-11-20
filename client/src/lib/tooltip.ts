@@ -1,7 +1,7 @@
 import { enter } from "./popup";
 
-const TRIGGERS = '.mu-button-icon[aria-label], nav[aria-label="Primary"] [aria-label], [data-tip]';
-const BELOW = 'nav[aria-label="Primary"] *, [data-action=drawer], [data-popup=display]';
+const TRIGGERS = '.mu-button-icon[aria-label], [data-primary-nav] [aria-label], [data-tip]';
+const BELOW = '[data-primary-nav] *, [data-action=drawer], [data-popup=display]';
 const DELAY = 400;
 
 let timer = 0;

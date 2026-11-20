@@ -495,7 +495,7 @@ pub fn stale(c: &Connection, ver: &str, limit: usize) -> DbResult<Vec<(String, i
 pub fn search_links(c: &Connection, text: &str, exclude: Option<i64>, limit: usize) -> DbResult<Vec<MemoLink>> {
     let terms: Vec<Term> = query::parse(text);
     let (mut conds, params) = query::to_sql(&terms, &TimeZone::UTC, "created_ts");
-    conds.insert(0, "m.parent_id IS NULL".into());
+    conds.insert(0, "m.parent_id IS NULL AND m.archived = 0".into());
     if let Some(id) = exclude {
         conds.push(format!("m.id != {id}"));
     }

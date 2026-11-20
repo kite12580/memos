@@ -37,8 +37,8 @@ export function openSelect(trigger: HTMLElement) {
     item.setAttribute("aria-selected", String(selected));
     if (selected) item.setAttribute("data-selected", "");
     Object.assign(item.dataset, opt.dataset);
-    item.innerHTML = `<div class="mu-select-item-text"></div><span class="mu-select-indicator">${selected ? icon("check", "") : ""}</span>`;
-    item.firstElementChild!.textContent = opt.textContent;
+    item.innerHTML = `${opt.dataset.icon ? `<span class="mu-option-icon" aria-hidden="true">${icon(opt.dataset.icon, "mu-icon")}</span>` : ""}<div class="mu-select-item-text"></div><span class="mu-select-indicator">${selected ? icon("check", "") : ""}</span>`;
+    item.querySelector(".mu-select-item-text")!.textContent = opt.textContent;
     listbox.append(item);
   }
   popup.append(listbox);
