@@ -47,9 +47,6 @@ function swap(doc: Document) {
   const card = active.closest<HTMLElement>("main [data-card]");
   const inCard = card ? $$(FOCUSABLE, card).indexOf(active) : -1;
   $("#root")!.replaceWith(document.adoptNode(doc.getElementById("root")!));
-  if (focused >= 0) chrome()[focused]?.focus({ preventScroll: true });
-  const again = card && $(`main [data-card="${card.dataset.card}"]`);
-  if (again && inCard >= 0) $$(FOCUSABLE, again)[inCard]?.focus({ preventScroll: true });
   $$("body > template").forEach((t) => t.remove());
   $("#toasts")!.before(...[...doc.querySelectorAll("body > template")].map((t) => document.adoptNode(t)));
   const side = sidebarScroll();
@@ -59,6 +56,11 @@ function swap(doc: Document) {
     run.textContent = old.textContent;
     old.replaceWith(run);
   }
+  return () => {
+    if (focused >= 0) chrome()[focused]?.focus({ preventScroll: true });
+    const again = card && $(`main [data-card="${card.dataset.card}"]`);
+    if (again && inCard >= 0) $$(FOCUSABLE, again)[inCard]?.focus({ preventScroll: true });
+  };
 }
 
 /** Shows `url` in place; `replace` keeps the history entry and the scroll position, as after a write. */
@@ -91,8 +93,9 @@ async function navigate(url: string, replace = false, scroll?: number) {
     }
   }
   closeAll();
-  swap(doc);
+  const refocus = swap(doc);
   document.dispatchEvent(new CustomEvent("memos:page"));
+  refocus();
   const target = shown.hash && document.getElementById(decodeURIComponent(shown.hash.slice(1)));
   if (target && scroll === undefined && !replace) target.scrollIntoView();
   else restore(scroll ?? keepScroll);

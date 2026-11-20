@@ -201,6 +201,49 @@ const pages: Record<string, () => Promise<{ default: (signal: AbortSignal) => vo
   settings: () => import("./pages/settings"),
 };
 
+const TREE = "memos-lite-tag-tree";
+
+function initTagTree() {
+  const tree = $("[data-tag-tree]");
+  if (!tree) return;
+  const state: { expanded: string[]; revealedFor?: string } = JSON.parse(localStorage.getItem(TREE) || '{"expanded":[]}');
+  const save = () => localStorage.setItem(TREE, JSON.stringify(state));
+  const active = $("[data-checked]", tree)?.closest<HTMLElement>("[data-path]")?.dataset.path;
+  if (active !== state.revealedFor) {
+    const parts = active?.split("/") ?? [];
+    for (let i = 1; i < parts.length; i++) {
+      const path = parts.slice(0, i).join("/");
+      if (!state.expanded.includes(path)) state.expanded.push(path);
+    }
+    state.revealedFor = active;
+    save();
+  }
+  const apply = () => {
+    for (const item of $$("[data-path]", tree)) {
+      const group = item.lastElementChild as HTMLElement;
+      if (group.getAttribute("role") !== "group") continue;
+      const open = state.expanded.includes(item.dataset.path!);
+      group.hidden = !open;
+      item.firstElementChild!.setAttribute("aria-expanded", String(open));
+      const toggle = $("[data-toggle]", item)!;
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", `${open ? tree.dataset.collapse : tree.dataset.expand} ${toggle.dataset.name}`);
+      const chevron = $(".lucide-chevron-right", toggle)!;
+      chevron.classList.toggle("rotate-90", open);
+      chevron.classList.toggle("rtl:rotate-180", !open);
+    }
+  };
+  apply();
+  tree.onclick = (e) => {
+    const toggle = (e.target as HTMLElement).closest<HTMLElement>("[data-toggle]");
+    if (!toggle) return;
+    const path = toggle.closest<HTMLElement>("[data-path]")!.dataset.path!;
+    state.expanded = state.expanded.includes(path) ? state.expanded.filter((p) => p !== path) : [...state.expanded, path];
+    save();
+    apply();
+  };
+}
+
 let leave = new AbortController();
 let first = true;
 
@@ -212,6 +255,7 @@ function initPage() {
   formatTimes();
   cards.initClamps();
   cards.markFresh();
+  initTagTree();
   initList(signal);
   if ($("[data-resize=sidebar]")) void ui().then((u) => u.initResize());
   renderStale();
@@ -231,5 +275,6 @@ function initPage() {
 
 initPage();
 document.addEventListener("memos:page", initPage);
+document.addEventListener("memos:sidebar", initTagTree);
 void import("./nav");
 idle(() => void ui());

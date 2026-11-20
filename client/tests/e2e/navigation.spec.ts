@@ -58,3 +58,23 @@ test("settings sections and writes stay in place", async ({ page }) => {
   await expect(page.locator("[data-select=layout]")).toHaveText("List");
   expect(await page.evaluate(() => (window as Marked).kept)).toBe(true);
 });
+
+test("the tag tree opens branches on demand and remembers them", async ({ page, request }) => {
+  await memo(request, "tree #branch/leaf");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Tags: More" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /tree/i }).click();
+  await page.keyboard.press("Escape");
+  const tree = page.getByRole("tree", { name: "Tags" });
+  const leaf = tree.getByRole("button", { name: /^#branch\/leaf/ });
+  await expect(leaf).toBeHidden();
+  await tree.getByRole("button", { name: "Expand #branch" }).click();
+  await expect(leaf).toBeVisible();
+  await page.reload();
+  await expect(leaf).toBeVisible();
+  await leaf.click();
+  await expect(page).toHaveURL(/q=%23branch%2Fleaf/);
+  await expect(leaf).toBeFocused();
+  await page.getByRole("button", { name: "Tags: More" }).click();
+  await page.getByRole("menuitemcheckbox", { name: /tree/i }).click();
+});

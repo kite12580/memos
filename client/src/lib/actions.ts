@@ -36,6 +36,7 @@ export async function refreshChrome() {
     aside.replaceChildren(...nextAside.childNodes);
     formatTimes(aside);
     if (focused >= 0) controls()[focused]?.focus({ preventScroll: true });
+    document.dispatchEvent(new CustomEvent("memos:sidebar"));
   }
   const grid = doc.querySelector("[data-cells]");
   const cells = $("[data-cells]");

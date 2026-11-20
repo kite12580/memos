@@ -383,6 +383,10 @@ pub struct TagRow {
     pub href: String,
     pub active: bool,
     pub depth: usize,
+    pub has_children: bool,
+    pub above_active: bool,
+    /// How many tree groups end after this row.
+    pub closes: usize,
 }
 
 pub struct NavGroup {
@@ -415,6 +419,9 @@ pub fn tag_rows(counts: &[(String, i64)], tree: bool, active: Option<&str>, href
             href: href(path),
             active: active == Some(path),
             depth,
+            has_children: false,
+            above_active: active.is_some_and(|a| a.starts_with(&format!("{path}/"))),
+            closes: 0,
         }
     };
     if !tree {
@@ -431,10 +438,15 @@ pub fn tag_rows(counts: &[(String, i64)], tree: bool, active: Option<&str>, href
             *totals.entry(prefix.clone()).or_default() += if prefix == *tag { *n } else { 0 };
         }
     }
-    totals
-        .iter()
-        .map(|(path, n)| row(path, *n, path.matches('/').count()))
-        .collect()
+    let mut rows: Vec<TagRow> = totals.iter().map(|(path, n)| row(path, *n, path.matches('/').count())).collect();
+    for i in 0..rows.len() {
+        let next = rows.get(i + 1).map_or(0, |r| r.depth);
+        let has_children = rows.get(i + 1).is_some_and(|r| r.path.starts_with(&format!("{}/", rows[i].path)));
+        let row = &mut rows[i];
+        row.has_children = has_children;
+        row.closes = if has_children { 0 } else { row.depth.saturating_sub(next) };
+    }
+    rows
 }
 
 pub struct MonthView {
