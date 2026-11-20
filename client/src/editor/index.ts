@@ -8,7 +8,8 @@ import { icon } from "../lib/icon";
 import { closeAll, openPopup } from "../lib/popup";
 import { formatTimes } from "../lib/time";
 import { toastError } from "../lib/toast";
-import { articleOf, initClamps, refreshChrome, replaceCard } from "../lib/cards";
+import { articleOf, fresh, initClamps, markFresh, replaceCard } from "../lib/cards";
+import { refreshChrome } from "../lib/actions";
 import { layoutGrid } from "../lib/list";
 import { MEMO_EDITOR_THEME, MEMO_FOCUS_EDITOR_THEME, memoEditorLabels, memoExtensions, memoResolveUrl, memoSanitizeHtml, memoTagOptions } from "../memos/memo-markdown";
 import { MEMO_MARKDOWN } from "../memos/memo-ast";
@@ -47,7 +48,12 @@ const rankTags = (tags: readonly string[], query: string) => {
     .map((c) => c.tag);
 };
 
-const DRAFT_KEY = "memos-lite-draft";
+const SOURCE_KEY = "memos-lite-source-mode";
+
+const draftKey = (composer: HTMLElement) => {
+  const mode = composer.dataset.composer;
+  return mode === "create" ? "memos-lite-draft" : mode === "comment" ? `memos-lite-draft:${composer.dataset.parent}` : null;
+};
 
 /** One open editor: the composer, a comment composer, or a card being edited. */
 export class Session {
@@ -55,6 +61,7 @@ export class Session {
   attachments: Uploaded[] = [];
   relations: Relation[] = [];
   createdTs?: number;
+  updatedTs?: number;
   uid?: string;
   rev?: number;
   saving = false;
@@ -99,6 +106,7 @@ export class Session {
       onChange: () => this.changed(),
       onSubmit: () => void this.save(),
       autofocus: focus && "end",
+      mode: localStorage.getItem(SOURCE_KEY) ? "source" : "rich",
     });
     element.classList.add("memo-editor-root");
     this.el.dataset.ready = "1";
@@ -113,10 +121,19 @@ export class Session {
   changed() {
     const save = $<HTMLButtonElement>("[data-action=save]", this.el);
     if (save) {
-      save.toggleAttribute("data-disabled", this.empty);
-      save.setAttribute("aria-disabled", String(this.empty));
+      const blocked = this.empty || this.saving;
+      save.toggleAttribute("data-disabled", blocked);
+      save.setAttribute("aria-disabled", String(blocked));
+      const reason = save.nextElementSibling;
+      const required = reason?.classList.contains("mu-visually-hidden") ? reason : null;
+      required?.toggleAttribute("hidden", !this.empty);
+      if (this.saving) delete save.dataset.tip;
+      else save.dataset.tip = (this.empty && required?.textContent) || save.textContent || "";
+      if (this.empty) delete save.dataset.tipShortcut;
+      else save.dataset.tipShortcut = `${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"} Enter`;
     }
-    if (this.el.dataset.composer === "create") localStorage.setItem(DRAFT_KEY, this.editor.getMarkdown());
+    const key = draftKey(this.el);
+    if (key) localStorage.setItem(key, this.editor.getMarkdown());
   }
 
   async addFiles(files: File[]) {
@@ -181,8 +198,14 @@ export class Session {
   async save() {
     if (this.saving || this.empty) return;
     this.saving = true;
+    this.changed();
     const button = $<HTMLButtonElement>("[data-action=save]", this.el);
-    button?.setAttribute("data-disabled", "");
+    button?.setAttribute("aria-busy", "true");
+    button?.setAttribute("data-loading", "");
+    const spinner = setTimeout(() => {
+      button?.setAttribute("data-loading-visible", "");
+      button?.insertAdjacentHTML("afterbegin", '<span class="mu-spinner" aria-hidden="true"></span>');
+    }, 300);
     try {
       const content = this.editor.getMarkdown();
       const html = await renderHTML(content);
@@ -193,17 +216,22 @@ export class Session {
         attachments: this.attachments.map((a) => a.uid),
         relations: this.relations.map((r) => r.uid),
         createdTs: this.createdTs ?? this.dayTs(),
+        updatedTs: this.updatedTs,
         rev: this.rev,
         parent: this.el.dataset.parent,
       };
       const inList = this.el.closest("#memo-list") || this.el.dataset.composer === "create" ? "?list=1" : "";
       const res = this.uid ? await post(`/memos/${this.uid}${inList}`, body) : await post(`/memos${inList}`, body);
       const card = await res.text();
-      if (this.el.dataset.composer === "create") localStorage.removeItem(DRAFT_KEY);
+      const key = draftKey(this.el);
+      if (key) localStorage.removeItem(key);
       this.onDone(card, body);
     } catch (e) {
       toastError(e);
     } finally {
+      clearTimeout(spinner);
+      for (const name of ["aria-busy", "data-loading", "data-loading-visible"]) button?.removeAttribute(name);
+      button?.querySelector(".mu-spinner")?.remove();
       this.saving = false;
       this.changed();
     }
@@ -236,21 +264,76 @@ export class Session {
   }
 
   toggleSource() {
-    this.editor.setOptions({ mode: this.editor.mode === "source" ? "rich" : "source" });
+    const source = this.editor.mode !== "source";
+    if (source) localStorage.setItem(SOURCE_KEY, "1");
+    else localStorage.removeItem(SOURCE_KEY);
+    this.editor.setOptions({ mode: source ? "source" : "rich" });
   }
 
   toggleFocus() {
     const on = !this.el.hasAttribute("data-focus-mode");
-    this.el.toggleAttribute("data-focus-mode", on);
-    this.el.classList.toggle("fixed", on);
-    this.el.classList.toggle("inset-2", on);
-    this.el.classList.toggle("z-40", on);
-    this.el.classList.toggle("sm:inset-8", on);
-    $(".memo-editor-content", this.el)?.toggleAttribute("data-focus-mode", on);
-    this.editor.setOptions({ theme: on ? MEMO_FOCUS_EDITOR_THEME : MEMO_EDITOR_THEME });
+    const apply = () => {
+      this.el.toggleAttribute("data-focus-mode", on);
+      if (on) {
+        this.el.dataset.frame = this.el.className;
+        this.el.classList.remove("relative", "mb-2", "pt-3");
+        this.el.classList.add(...FOCUS_FRAME);
+      } else this.el.className = this.el.dataset.frame ?? this.el.className;
+      $(".memo-editor-content", this.el)?.toggleAttribute("data-focus-mode", on);
+      for (const c of ["min-h-0", "flex-1"]) for (const el of $$(".memo-editor-content, .memo-editor-scroller", this.el)) el.classList.toggle(c, on);
+      document.body.style.overflow = on ? "hidden" : "";
+      if (on) {
+        const placeholder = document.createElement("div");
+        placeholder.className = "w-full mb-2";
+        placeholder.setAttribute("aria-hidden", "true");
+        placeholder.dataset.focusPlaceholder = "";
+        placeholder.style.height = `${height}px`;
+        const backdrop = document.createElement("div");
+        backdrop.className = "fixed inset-0 bg-mu-overlay backdrop-blur-sm z-(--mu-layer-overlay)";
+        backdrop.setAttribute("aria-label", t("editor.exit-focus-mode"));
+        backdrop.dataset.focusBackdrop = "";
+        backdrop.addEventListener("click", () => this.toggleFocus());
+        this.el.before(backdrop, placeholder);
+        const header = $("[data-timestamp]", this.el)?.parentElement;
+        if (header) header.classList.replace("h-6", "h-10");
+        else {
+          const row = document.createElement("div");
+          row.className = "flex w-full items-center gap-1.5 h-10";
+          row.dataset.focusHeader = "";
+          const now = new Intl.RelativeTimeFormat(document.documentElement.lang || undefined, { numeric: "auto" }).format(0, "second");
+          row.innerHTML = '<span class="shrink-0 whitespace-nowrap mu-caption text-mu-text-secondary select-none"></span>';
+          row.firstElementChild!.textContent = now.charAt(0).toLocaleUpperCase() + now.slice(1);
+          this.el.prepend(row);
+        }
+        const exitRow = (header ?? $("[data-focus-header]", this.el))!;
+        exitRow.insertAdjacentHTML(
+          "beforeend",
+          `<div class="ms-auto -me-2" data-focus-exit=""><button type="button" aria-label="${t("editor.exit-focus-mode")}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus">${icon("minimize-2", "")}</button></div>`,
+        );
+        $("[data-focus-exit] button", this.el)!.addEventListener("click", () => this.toggleFocus());
+      } else {
+        for (const el of $$("[data-focus-backdrop], [data-focus-placeholder]")) el.remove();
+        $("[data-focus-header]", this.el)?.remove();
+        $("[data-focus-exit]", this.el)?.remove();
+        $("[data-timestamp]", this.el)?.parentElement?.classList.replace("h-10", "h-6");
+      }
+      this.editor.setOptions({ theme: on ? MEMO_FOCUS_EDITOR_THEME : MEMO_EDITOR_THEME });
+    };
+    const height = this.el.getBoundingClientRect().height;
+    if (document.startViewTransition) {
+      this.el.style.viewTransitionName = "memo-focus-mode";
+      document.startViewTransition(apply).finished.finally(() => (this.el.style.viewTransitionName = ""));
+    } else apply();
     this.editor.focus();
   }
+
+  destroy() {
+    if (this.el.hasAttribute("data-focus-mode")) this.toggleFocus();
+    this.editor.destroy();
+  }
 }
+
+const FOCUS_FRAME = "bg-mu-surface px-4 pb-4 rounded-mu-lg border border-mu-line/70 fixed z-50 w-auto max-w-3xl mx-auto border-mu-line h-auto overflow-y-auto pt-2 pb-4 sm:px-6 top-2 left-2 right-2 bottom-2 sm:top-4 sm:left-4 sm:right-4 sm:bottom-4 md:top-8 md:left-8 md:right-8 md:bottom-8".split(" ");
 
 const sessions = new WeakMap<HTMLElement, Session>();
 export const sessionOf = (el: Element) => {
@@ -274,17 +357,15 @@ function insertCard(html: string, composer: HTMLElement) {
     holder.hidden = true;
     compose.hidden = false;
   } else {
-    const leading = $("#memo-list [data-leading]");
-    const firstUnpinned = $$("#memo-list [data-card]")
-      .filter((c) => !articleOf(c).hasAttribute("data-pinned"))
-      .sort((a, b) => Number(a.dataset.i ?? 0) - Number(b.dataset.i ?? 0))[0];
     $("#memo-list [data-empty]")?.remove();
-    if (firstUnpinned) firstUnpinned.before(card);
-    else if (leading) leading.after(card);
+    card.dataset.i = "0.5";
+    $("#memo-list [data-leading]")?.after(card);
+    fresh.add(card.dataset.card!);
     layoutGrid();
   }
   formatTimes(card);
   initClamps(card);
+  markFresh();
 }
 
 const activating = new WeakMap<HTMLElement, Promise<Session>>();
@@ -304,19 +385,38 @@ export function activate(composer: HTMLElement, focus = true): Promise<Session> 
 async function start(composer: HTMLElement, focus: boolean) {
   await ready;
   const typed = $(".memo-editor-root", composer)?.innerText.trim() ?? "";
-  const draft = composer.dataset.composer === "create" ? (localStorage.getItem(DRAFT_KEY) ?? "") : "";
+  const key = draftKey(composer);
+  const draft = key ? (localStorage.getItem(key) ?? "") : "";
   const session = new Session(composer, (html, saved) => {
     insertCard(html, composer);
     session.reset(saved);
+    if (composer.dataset.composer === "comment") showCommentComposer(false);
     void refreshChrome();
   });
   sessions.set(composer, session);
   session.mount([draft.trim(), typed].filter(Boolean).join("\n\n"), focus || composer.contains(document.activeElement));
   composer.addEventListener("click", (e) => {
-    const action = (e.target as HTMLElement).closest<HTMLElement>("[data-action=save]");
-    if (action) void session.save();
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-action=save]")) void session.save();
+    else if (target.closest("[data-cancel]")) showCommentComposer(false);
   });
   return session;
+}
+
+function showCommentComposer(on: boolean) {
+  const holder = $("[data-comment-composer]");
+  if (!holder) return;
+  holder.hidden = !on;
+  for (const b of $$<HTMLElement>("[data-comments-head] [data-action=write-comment]")) b.hidden = on;
+}
+
+export async function openComment() {
+  const holder = $("[data-comment-composer]");
+  const composer = holder && $("[data-composer]", holder);
+  if (!composer) return;
+  showCommentComposer(true);
+  holder.scrollIntoView({ behavior: "smooth", block: "center" });
+  (await activate(composer)).editor.focus();
 }
 
 /** Edits a card in place, as memos does: the card's body becomes the editor until saved or cancelled. */
@@ -338,11 +438,14 @@ export async function editCard(card: HTMLElement) {
   body.append(composer);
   article.replaceChildren(body);
   const restore = () => {
+    session.destroy();
     article.replaceChildren(...saved);
   };
-  const session = new Session(
+  const session: Session = new Session(
     composer,
     (html) => {
+      session.destroy();
+      fresh.delete(uid);
       replaceCard(card, html);
       void refreshChrome();
     },
@@ -351,6 +454,7 @@ export async function editCard(card: HTMLElement) {
   session.uid = uid;
   session.rev = src.rev;
   session.createdTs = src.createdTs;
+  session.updatedTs = src.updatedTs;
   session.attachments = src.attachments;
   session.relations = src.relations;
   sessions.set(composer, session);
@@ -372,6 +476,12 @@ export async function editCard(card: HTMLElement) {
 
 const menuItem = (action: string, iconName: string, label: string, extra = "") =>
   `<div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption${extra}" data-insert="${action}"><span class="mu-option-icon" aria-hidden="true">${icon(iconName, "")}</span><span class="mu-menu-label">${label}</span></div>`;
+
+function imageAlt(filename: string) {
+  const name = filename.replace(/[\r\n]+/g, " ").trim();
+  const dot = name.lastIndexOf(".");
+  return (dot > 0 ? name.slice(0, dot) : name || "image").replace(/[\\[\]]/g, "\\$&");
+}
 
 function pickFiles(accept: string): Promise<File[]> {
   return new Promise((resolve) => {
@@ -409,16 +519,20 @@ export async function openInsertMenu(trigger: HTMLElement) {
       case "attachment":
         return session.addFiles(await pickFiles(""));
       case "image": {
-        for (const file of await pickFiles("image/*")) {
+        const files = await pickFiles("image/*");
+        const done: string[] = [];
+        for (const file of files) {
           try {
             const a = await uploadFile(file);
-            const md = session.editor.getMarkdown();
-            session.editor.setMarkdown(`${md}${md && !md.endsWith("\n") ? "\n" : ""}![${a.filename}](${a.url})\n`);
-            session.changed();
+            done.push(`![${imageAlt(a.filename)}](${a.url})`);
           } catch (err) {
             toastError(err);
           }
         }
+        const { editor } = session;
+        if (done.length) editor.commands.insertMarkdown(done.join("\n\n"), { at: editor.getSelection().focus, block: true });
+        editor.commands.focus();
+        editor.commands.scrollIntoView();
         return;
       }
       case "draw":

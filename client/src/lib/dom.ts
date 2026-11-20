@@ -11,7 +11,7 @@ declare global {
 export const go = (url: string) => (window.__navigate ? void window.__navigate(url) : location.assign(url));
 
 /** Shows the page again as the server has it now, in place and at the same scroll position when it can. */
-export const reload = () => (window.__navigate ? void window.__navigate(location.href, true) : location.reload());
+export const reload = (): Promise<void> => (window.__navigate ? window.__navigate(location.href, true) : Promise.resolve(location.reload()));
 
 /** The app's path prefix, `""` or `/memos`. */
 export const base = document.body.dataset.base ?? "";

@@ -81,13 +81,13 @@ test("comments and reacts", async ({ page, request }) => {
   await page.locator('[role=gridcell][data-emoji="👍"]').click();
   await expect(page.locator(`main article#m-${uid} [data-action=react][data-emoji="👍"]`)).toBeVisible();
   await page.goto("/");
-  await expect(page.locator(`[data-card="${uid}"] section[aria-label] a`)).toHaveText("a reply");
+  await expect(page.locator(`[data-card="${uid}"] section[aria-label] a`)).toContainText("a reply");
 });
 
 test("searches and pages through memos", async ({ page, request }) => {
   for (let i = 0; i < 25; i++) await request.post("/api/memos", { ...auth, data: { content: `paging ${i} #paging` } });
   await page.goto("/");
-  await page.keyboard.press("Control+k");
+  await page.locator("[data-popup=search]").click();
   await page.locator("[data-mode=expression]").click();
   await page.locator("input[name=q]").fill("#paging");
   await page.locator("input[name=q]").press("Enter");

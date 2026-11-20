@@ -99,6 +99,7 @@ pub async fn update(app: &Arc<App>, req: &Request, uid: &str) -> Response {
         html,
         html_ver: ver,
         created_ts: b["createdTs"].as_i64(),
+        updated_ts: b["updatedTs"].as_i64(),
         now: (app.now)(),
     };
     let rev = b["rev"].as_i64();
@@ -220,6 +221,7 @@ async fn rewrite(
                 html,
                 html_ver: m.html_ver.clone(),
                 created_ts: None,
+                updated_ts: None,
                 now,
             };
             Ok(memos::update(c, &uid_owned, Some(m.rev), edit)?.map(|_| ()))

@@ -178,7 +178,7 @@ export default function init(_signal: AbortSignal) {
 
     section.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
-      const box = t.closest<HTMLElement>("[role=checkbox]");
+      const box = t.closest<HTMLElement>("[role=checkbox]") ?? t.closest("label")?.querySelector<HTMLElement>("[role=checkbox]");
       if (box && box === newBlur) return setChecked(box, box.getAttribute("aria-checked") !== "true");
       const row = t.closest<HTMLElement>("[data-rule]");
       if (!row) return;
@@ -212,7 +212,6 @@ export default function init(_signal: AbortSignal) {
       for (const tag of original.keys()) if (!now.has(tag)) writes.push([tag, { color: "", blur: false }]);
       try {
         for (const [tag, rule] of writes) await post("/tags", { tag, ...rule });
-        sessionStorage.setItem("toast", section.dataset.saved!);
         reload();
       } catch (e) {
         toastError(e);

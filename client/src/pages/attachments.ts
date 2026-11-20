@@ -2,7 +2,7 @@
 // deleting every unused upload.
 
 import { $, $$, fromHTML, post, reload } from "../lib/dom";
-import { closeDialog, openDialog } from "../lib/popup";
+import { closeLayer, openDialog } from "../lib/popup";
 import { formatTimes } from "../lib/time";
 import { toast, toastError } from "../lib/toast";
 
@@ -67,7 +67,7 @@ export default function init(signal: AbortSignal) {
       $("[data-slot=title]", dialog)!.textContent = button.dataset.title!;
       $("[data-slot=description]", dialog)!.textContent = button.dataset.description!;
       $("[data-action=dialog-ok]", dialog)!.addEventListener("click", async () => {
-        closeDialog(dialog);
+        closeLayer(dialog);
         try {
           for (const row of $$("[data-unused]", root)) await post(`/attachments/${row.dataset.unused}/delete`);
           toast(button.dataset.done!);

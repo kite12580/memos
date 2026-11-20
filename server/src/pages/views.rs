@@ -150,7 +150,7 @@ pub async fn views(app: &Arc<App>, req: &Request) -> Response {
     };
     let sb = Sidebar {
         active: "views",
-        views: Some(super::view_rows(&views)),
+        views: Some(super::view_rows(&views, &super::Filters::home(c.base))),
         ..Default::default()
     };
     let p = ViewsPage {

@@ -89,8 +89,9 @@ test("tag rules color tags and blur their memos", async ({ page, request }) => {
   });
   await page.locator("[data-add]").click();
   await expect(page.locator("[data-rule]")).toHaveCount(2);
+  const reloaded = page.waitForResponse((r) => r.request().method() === "GET" && new URL(r.url()).pathname === "/settings");
   await page.locator("[data-save-tags]").click();
-  await expect(page.locator(".mu-toast")).toContainText("Update succeeded");
+  await reloaded;
   await expect(page.locator("[data-rule=paint] [data-rule-clear]")).toHaveText("#16a34a");
 
   await page.goto(`/memos/${uid}`);
@@ -105,6 +106,5 @@ test("tag rules color tags and blur their memos", async ({ page, request }) => {
   await page.locator("[data-rule=hush] [data-rule-delete]").click();
   await page.locator("[data-rule=paint] [data-rule-delete]").click();
   await page.locator("[data-save-tags]").click();
-  await expect(page.locator(".mu-toast")).toContainText("Update succeeded");
   await expect(page.getByText("No tag metadata configured.")).toBeVisible();
 });
