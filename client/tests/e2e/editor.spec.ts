@@ -126,7 +126,7 @@ test("opens tag suggestions for a tag typed before the editor loads", async ({ p
   await expect(page.getByRole("option", { name: "#earlytag" })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator("[data-composer=create] .memo-editor-root")).toContainText("hi #earlytag");
-||||||| parent of a0de4be1 (feat: memos' composer attachment toolbar and reordering)
+});
 
 test("the composer's attachments carry memos' toolbar and details, and keep the order they are dragged into", async ({ page, request }) => {
   await page.goto("/");

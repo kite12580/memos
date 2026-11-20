@@ -63,7 +63,21 @@ function pruneUiStyles() {
   const used = new Set(sources.match(/mu-[a-z0-9-]+/g));
   const prefixes = [...sources.matchAll(/(mu-[a-z0-9-]*-)\$\{/g)].map((m) => m[1]);
   const known = (cls) => used.has(cls) || prefixes.some((p) => cls.startsWith(p));
-  const keepSelector = (sel) => sel.split(",").some((one) => (one.match(/\.mu-[a-z0-9-]+/g) ?? []).every((c) => known(c.slice(1))));
+  const topLevel = (sel) => {
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let j = 0; j < sel.length; j++) {
+      if (sel[j] === "(") depth++;
+      else if (sel[j] === ")") depth--;
+      else if (sel[j] === "," && !depth) {
+        parts.push(sel.slice(start, j));
+        start = j + 1;
+      }
+    }
+    return [...parts, sel.slice(start)];
+  };
+  const keptSelectors = (sel) => topLevel(sel).filter((one) => (one.match(/\.mu-[a-z0-9-]+/g) ?? []).every((c) => known(c.slice(1)))).join(",");
   let i = 0;
   const block = (depth) => {
     let text = "";
@@ -101,7 +115,8 @@ function pruneUiStyles() {
         const end = css.indexOf("}", i);
         const body = css.slice(i, end);
         i = end + 1;
-        if (keepSelector(head)) text += `${head}{${body}}`;
+        const kept = keptSelectors(head);
+        if (kept) text += `${kept}{${body}}`;
       }
     }
     return text;

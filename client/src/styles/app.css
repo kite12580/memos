@@ -46,7 +46,7 @@
   }
 
   ::highlight(memo-search-match) {
-    background-color: color-mix(in oklch, var(--mu-warning) 40%, transparent);
+    background-color: oklch(from var(--mu-warning) l c h / 0.4);
   }
 }
 
