@@ -11,6 +11,22 @@ interface Layer {
 
 const stack: Layer[] = [];
 const GAP = 6;
+const ITEM = ':is([role^="menuitem"], [role="option"])[tabindex]';
+
+function highlight(layer: HTMLElement, item: HTMLElement | null) {
+  for (const el of layer.querySelectorAll(`${ITEM}[data-highlighted]`)) if (el !== item) el.removeAttribute("data-highlighted");
+  item?.setAttribute("data-highlighted", "");
+}
+
+function onPointerOver(e: PointerEvent) {
+  const t = e.target as HTMLElement;
+  const layer = stack.find((l) => l.el.contains(t));
+  if (!layer) return;
+  const item = t.closest<HTMLElement>(ITEM);
+  if (item?.hasAttribute("data-disabled")) return;
+  highlight(layer.el, item);
+  item?.focus({ preventScroll: true });
+}
 
 /** Places `positioner` next to `anchor` inside the viewport, flipping when it would overflow. */
 function place(positioner: HTMLElement, popup: HTMLElement, anchor: HTMLElement, side: Side, align: Align) {
@@ -152,6 +168,7 @@ function onKey(e: KeyboardEvent) {
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     const next = items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length];
     next.focus();
+    highlight(top, next);
     e.preventDefault();
   } else if ((e.key === "Enter" || e.key === " ") && at >= 0) {
     items[at].click();
@@ -172,5 +189,6 @@ export function initPopups() {
     true,
   );
   document.addEventListener("keydown", onKey);
+  document.addEventListener("pointerover", onPointerOver);
   addEventListener("resize", closeAll);
 }

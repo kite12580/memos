@@ -67,3 +67,16 @@ test("shows the pointer over menu items and emoji", async ({ page, request }) =>
   await card.locator("[data-popup=reactions]").first().click();
   await expect(page.locator(".mu-combobox-item").first()).toHaveCSS("cursor", "pointer");
 });
+
+test("highlights the menu item under the pointer", async ({ page, request }) => {
+  await memo(request, "Hover memo");
+  await page.goto("/");
+  await page.locator("article", { hasText: "Hover memo" }).locator("[data-popup=memo-menu]").click();
+  const [first, second] = [page.getByRole("menuitem").nth(0), page.getByRole("menuitem").nth(1)];
+  await second.hover();
+  await expect(second).toHaveAttribute("data-highlighted", "");
+  await expect(second).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await first.hover();
+  await expect(first).toHaveAttribute("data-highlighted", "");
+  await expect(second).not.toHaveAttribute("data-highlighted");
+});
