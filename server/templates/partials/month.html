@@ -2,7 +2,7 @@
 <div class="group flex w-full flex-col text-mu-text-secondary">
 <header class="min-w-0 items-center mu-s-md flex h-(--mu-row-height) w-full gap-1 rounded-(--mu-row-radius) px-2 mu-body group transition-colors mb-2 justify-between">
 <h2 class="min-w-0 truncate mu-label text-mu-text select-none"><time data-fmt="month" datetime="{{ month.key }}">{{ month.title }}</time></h2>
-<nav class="flex shrink-0 items-center gap-0.5" aria-label="Month navigation">
+<nav class="flex shrink-0 items-center gap-0.5" aria-label="{{ c.t.s("common.month-navigation") }}">
 <button type="button" aria-label="{{ c.t.s("common.previous-month") }}" data-action="month" data-month="{{ month.prev }}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-xs mu-focus">{{ h::icon("chevron-left", "rtl:rotate-180") }}</button>
 <button type="button" aria-label="{{ c.t.s("common.next-month") }}" data-action="month" data-month="{{ month.next }}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-xs mu-focus">{{ h::icon("chevron-right", "rtl:rotate-180") }}</button>
 </nav>

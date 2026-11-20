@@ -83,6 +83,15 @@ impl SettingsPage<'_> {
             .collect()
     }
 
+    fn theme_icon(&self, value: &str) -> &'static str {
+        match value {
+            "system" => "monitor",
+            "default-dark" => "moon",
+            "paper" => "palette",
+            _ => "sun",
+        }
+    }
+
     fn layouts(&self) -> Vec<Choice> {
         self.c
             .layout_options()
