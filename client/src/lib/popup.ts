@@ -65,10 +65,18 @@ export function listNav(
   return nav;
 }
 
+let closing: ReturnType<typeof setTimeout> | undefined;
+
 function onPointerOver(e: PointerEvent) {
   const t = e.target as HTMLElement;
-  const layer = stack.find((l) => l.el.contains(t));
-  if (!layer) return;
+  const index = stack.findIndex((l) => l.el.contains(t));
+  if (index === -1) return;
+  const layer = stack[index];
+  clearTimeout(closing);
+  const child = stack[index + 1];
+  if (child?.trigger && e.pointerType === "mouse" && !child.trigger.contains(t) && t.closest(`${ITEM}, .mu-menu-item`)) {
+    closing = setTimeout(() => stack[index + 1] === child && closeFrom(index + 1), 100);
+  }
   const item = t.closest<HTMLElement>(ITEM);
   if (item?.hasAttribute("data-disabled")) return;
   highlight(layer.el, item ?? undefined, ITEM);

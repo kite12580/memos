@@ -80,3 +80,17 @@ test("highlights the menu item under the pointer", async ({ page, request }) => 
   await expect(first).toHaveAttribute("data-highlighted", "");
   await expect(second).not.toHaveAttribute("data-highlighted");
 });
+
+test("closes a hovered submenu when the pointer moves to another item", async ({ page, request }) => {
+  await memo(request, "Submenu memo");
+  await page.goto("/");
+  await page.locator("article", { hasText: "Submenu memo" }).locator("[data-popup=memo-menu]").click();
+  await page.locator("[data-submenu=tpl-copy-menu]").hover();
+  const copy = page.locator("[data-action=copy-link]");
+  await expect(copy).toBeVisible();
+  await copy.hover();
+  await page.waitForTimeout(200);
+  await expect(copy).toBeVisible();
+  await page.locator("[data-action=delete]").hover();
+  await expect(copy).toBeHidden();
+});
