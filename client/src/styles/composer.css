@@ -24,6 +24,10 @@
     caret-color: var(--mu-text);
     outline: none;
   }
+  /* Safari leaves lazy blocks at the scroller's edges unpainted until the caret enters them. */
+  & .memo-editor-root > .mbe-lazy {
+    content-visibility: visible;
+  }
   & .memo-editor-root ::selection {
     background: var(--mu-selection);
   }
