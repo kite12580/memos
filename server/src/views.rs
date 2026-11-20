@@ -66,6 +66,14 @@ impl Prefs {
         self.compact || self.layout != "list"
     }
 
+    pub fn compact_locked(&self) -> bool {
+        self.layout != "list"
+    }
+
+    pub fn wide_locked(&self) -> bool {
+        self.layout == "auto"
+    }
+
     pub fn wide_list(&self) -> bool {
         self.layout != "list" || self.full_width
     }
@@ -157,11 +165,17 @@ pub struct Ctx<'a> {
     pub prefs: Prefs,
     pub theme: &'static str,
     pub system_theme: bool,
-    /// The search box's text.
-    pub q: String,
+    pub search: Search,
     pub now: i64,
     pub tags: std::sync::Arc<TagStyles>,
     pub profile: std::sync::Arc<crate::profile::Profile>,
+}
+
+#[derive(Default)]
+pub struct Search {
+    pub q: String,
+    pub path: &'static str,
+    pub view: Option<(i64, String)>,
 }
 
 pub const SEARCH_HINTS: [&str; 9] = ["#", "is:pinned", "has:task", "has:todo", "has:link", "has:code", "has:image", "after:", "before:"];
@@ -169,6 +183,18 @@ pub const SEARCH_HINTS: [&str; 9] = ["#", "is:pinned", "has:task", "has:todo", "
 impl Ctx<'_> {
     pub fn title(&self) -> &str {
         self.profile.title()
+    }
+
+    pub fn search_label(&self) -> &str {
+        match &self.search.view {
+            Some((_, name)) => name,
+            None if self.search.path == "/archived" => self.t.s("common.archived"),
+            None => self.t.s("common.memos"),
+        }
+    }
+
+    pub fn search_path(&self) -> &str {
+        if self.search.path.is_empty() { "/" } else { self.search.path }
     }
 
     /// `"{page} · {title}"`, the tab title of a page other than Home.
@@ -214,13 +240,15 @@ impl Ctx<'_> {
         ]
     }
 
-    pub fn layout_options(&self) -> [(&'static str, &'static str, String, String); 4] {
-        let cols = |n: &str| self.t.f("memo.layout-columns", &[("n", n)]);
+    pub fn layout_options(&self) -> [(&'static str, &'static str, String, String, String); 4] {
+        let t = &self.t;
+        let cols = |n: &str| t.f("memo.layout-columns", &[("n", n)]);
+        let cols_tip = |n: &str| t.f("memo.layout-columns-description", &[("n", n)]);
         [
-            ("list", "rows-3", self.t.s("memo.layout-list").to_string(), self.t.s("memo.layout-list").to_string()),
-            ("2", "columns-2", "2".into(), cols("2")),
-            ("3", "columns-3", "3".into(), cols("3")),
-            ("auto", "infinity", self.t.s("memo.layout-auto").to_string(), self.t.s("memo.layout-auto").to_string()),
+            ("list", "rows-3", t.s("memo.layout-list").into(), t.s("memo.layout-list").into(), t.s("memo.layout-list-description").into()),
+            ("2", "columns-2", "2".into(), cols("2"), cols_tip("2")),
+            ("3", "columns-3", "3".into(), cols("3"), cols_tip("3")),
+            ("auto", "infinity", t.s("memo.layout-auto").into(), t.s("memo.layout-auto").into(), t.s("memo.layout-auto-description").into()),
         ]
     }
 
@@ -242,6 +270,8 @@ impl Ctx<'_> {
             "close": t.s("common.close"),
             "showMore": t.s("memo.show-more"),
             "showLess": t.s("memo.show-less"),
+            "tasksUpdated": t.s("memo.task-actions.updated"),
+            "newBadge": t.s("memo.new-badge"),
         })
         .to_string()
         .replace('<', "\\u003c")
@@ -321,6 +351,7 @@ pub struct ViewRow {
     pub id: i64,
     pub name: String,
     pub icon: String,
+    pub href: String,
 }
 
 impl ViewRow {
@@ -370,7 +401,7 @@ pub struct NavRow {
 
 /// Tag rows in name order: every tag with its full path, or as a tree with
 /// parents inserted and children indented.
-pub fn tag_rows(base: &str, counts: &[(String, i64)], tree: bool, active: Option<&str>) -> Vec<TagRow> {
+pub fn tag_rows(counts: &[(String, i64)], tree: bool, active: Option<&str>, href: &dyn Fn(&str) -> String) -> Vec<TagRow> {
     let row = |path: &str, count: i64, depth: usize| {
         let segments: Vec<String> = if tree {
             vec![path.rsplit('/').next().unwrap_or(path).to_string()]
@@ -381,11 +412,7 @@ pub fn tag_rows(base: &str, counts: &[(String, i64)], tree: bool, active: Option
             path: path.to_string(),
             segments,
             count,
-            href: if active == Some(path) {
-                format!("{base}/")
-            } else {
-                format!("{base}/?q={}", encode_component(&format!("#{path}")))
-            },
+            href: href(path),
             active: active == Some(path),
             depth,
         }
@@ -469,7 +496,7 @@ pub fn today(now: i64, tz: &TimeZone) -> Date {
         .unwrap_or(Date::constant(2000, 1, 1))
 }
 
-pub fn month_view(t: &T, base: &str, start: Date, created: &[i64], tz: &TimeZone, now: i64, selected: Option<&str>) -> MonthView {
+pub fn month_view(t: &T, start: Date, created: &[i64], tz: &TimeZone, now: i64, selected: Option<&str>, href: &dyn Fn(&str) -> String) -> MonthView {
     let mut counts: HashMap<i8, usize> = HashMap::new();
     for ts in created {
         if let Ok(t) = Timestamp::from_second(*ts) {
@@ -495,7 +522,7 @@ pub fn month_view(t: &T, base: &str, start: Date, created: &[i64], tz: &TimeZone
             DayCell {
                 in_month,
                 day: d.day(),
-                href: format!("{base}/?q={}", encode_component(&format!("on:{key}"))),
+                href: href(&key),
                 label: if count == 0 {
                     key.clone()
                 } else {
@@ -911,22 +938,22 @@ mod tests {
     #[test]
     fn tag_tree() {
         let counts = vec![("a".to_string(), 1), ("b/c".to_string(), 2)];
-        let rows = tag_rows("", &counts, true, Some("b/c"));
+        let rows = tag_rows(&counts, true, Some("b/c"), &|p| format!("/x/{p}"));
         let summary: Vec<(String, i64, usize, bool)> =
             rows.iter().map(|r| (r.path.clone(), r.count, r.depth, r.active)).collect();
         assert_eq!(
             summary,
             vec![("a".into(), 1, 0, false), ("b".into(), 0, 0, false), ("b/c".into(), 2, 1, true)]
         );
-        let flat = tag_rows("/x", &counts, false, None);
+        let flat = tag_rows(&counts, false, None, &|p| format!("/x/{p}"));
         assert_eq!(flat[1].segments, vec!["b", "c"]);
-        assert_eq!(flat[1].href, "/x/?q=%23b%2Fc");
+        assert_eq!(flat[1].href, "/x/b/c");
     }
 
     #[test]
     fn calendar() {
         let t = T::english();
-        let m = month_view(&t, "", Date::constant(2026, 11, 1), &[1_763_576_986 + 365 * 86400], &TimeZone::UTC, 1_795_112_986, Some("2026-11-03"));
+        let m = month_view(&t, Date::constant(2026, 11, 1), &[1_763_576_986 + 365 * 86400], &TimeZone::UTC, 1_795_112_986, Some("2026-11-03"), &|d| d.to_string());
         assert_eq!(m.title, "November 2026");
         assert_eq!(m.days.len(), 35);
         assert_eq!(m.days[0].day, 1);

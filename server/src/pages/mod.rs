@@ -51,7 +51,7 @@ impl Composer {
         Composer {
             mode: "comment",
             parent: parent.to_string(),
-            placeholder: c.t.s("editor.any-thoughts"),
+            placeholder: c.t.s("editor.add-your-comment-here"),
             save_label: c.t.s("editor.comment"),
         }
     }
@@ -233,13 +233,14 @@ pub fn selected_day(terms: &[Term]) -> Option<&str> {
     })
 }
 
-pub fn view_rows(views: &[crate::db::views::View]) -> Vec<ViewRow> {
+pub fn view_rows(views: &[crate::db::views::View], links: &Filters) -> Vec<ViewRow> {
     views
         .iter()
         .map(|w| ViewRow {
             id: w.id,
             name: w.name.clone(),
             icon: w.icon.clone(),
+            href: links.view(w.id),
         })
         .collect()
 }
@@ -309,19 +310,56 @@ fn scope_path(scope: Scope) -> &'static str {
 }
 
 pub fn active_tag(terms: &[Term]) -> Option<String> {
-    match terms {
-        [Term { neg: false, atom: Atom::Tag(t) }] => Some(t.clone()),
+    let mut tags = terms.iter().filter_map(|t| match &t.atom {
+        Atom::Tag(tag) if !t.neg => Some(tag),
+        _ => None,
+    });
+    match (tags.next(), tags.next()) {
+        (Some(tag), None) => Some(tag.clone()),
         _ => None,
     }
 }
 
-pub fn collection_sidebar(c: &Ctx, data: &Collection, active: &'static str, stats: Option<jiff::civil::Date>, terms: &[Term]) -> Sidebar {
+pub struct Filters {
+    pub path: String,
+    pub view: Option<i64>,
+    pub terms: Vec<Term>,
+}
+
+impl Filters {
+    pub fn home(base: &str) -> Filters {
+        Filters { path: format!("{base}/"), view: None, terms: vec![] }
+    }
+
+    fn with(&self, keep: impl Fn(&Atom) -> bool, add: Option<Atom>) -> String {
+        let mut terms: Vec<Term> = self.terms.iter().filter(|t| t.neg || keep(&t.atom)).cloned().collect();
+        terms.extend(add.map(|atom| Term { neg: false, atom }));
+        with_query(&self.path, self.view, &query::format(&terms))
+    }
+
+    pub fn tag(&self, tag: &str) -> String {
+        let on = active_tag(&self.terms).as_deref() == Some(tag);
+        self.with(|a| !matches!(a, Atom::Tag(_)), (!on).then(|| Atom::Tag(tag.to_string())))
+    }
+
+    pub fn view(&self, id: i64) -> String {
+        let view = (self.view != Some(id)).then_some(id);
+        with_query(&self.path, view, &query::format(&self.terms))
+    }
+
+    pub fn day(&self, day: &str) -> String {
+        self.with(|a| !matches!(a, Atom::On(_)), Some(Atom::On(day.to_string())))
+    }
+}
+
+pub fn collection_sidebar(c: &Ctx, data: &Collection, active: &'static str, stats: Option<jiff::civil::Date>, links: &Filters) -> Sidebar {
+    let terms = &links.terms;
     Sidebar {
         active,
-        stats: stats.map(|start| v::month_view(&c.t, c.base, start, &data.month, &c.prefs.tz, c.now, selected_day(terms))),
-        views: Some(view_rows(&data.views)),
+        stats: stats.map(|start| v::month_view(&c.t, start, &data.month, &c.prefs.tz, c.now, selected_day(terms), &|d| links.day(d))),
+        views: Some(view_rows(&data.views, links)),
         active_view: data.view.as_ref().map(|w| w.id),
-        tags: Some(v::tag_rows(c.base, &data.tags, c.prefs.tag_tree, active_tag(terms).as_deref())),
+        tags: Some(v::tag_rows(&data.tags, c.prefs.tag_tree, active_tag(terms).as_deref(), &|t| links.tag(t))),
         ..Default::default()
     }
 }
@@ -339,7 +377,7 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
     };
     let (view_id, q) = view_and_query(req);
     let terms = query::parse(&q);
-    c.q = q.clone();
+    c.search.q = q.clone();
     let month = month_start_of(&c, &terms);
     let (from, to) = v::month_range(month, &c.prefs.tz);
     let lq = list_query(&c, scope, terms.clone(), None);
@@ -380,7 +418,10 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
         if scope == Scope::Archived { "archived" } else { "home" },
         view_q.strip_prefix('?').map(|s| format!("&{s}")).unwrap_or_default()
     );
-    let sb = collection_sidebar(&c, &data, if scope == Scope::Home { "timeline" } else { "" }, Some(month), &terms);
+    let links = Filters { path: path.clone(), view: view_id, terms: terms.clone() };
+    let sb = collection_sidebar(&c, &data, if scope == Scope::Home { "timeline" } else { "" }, Some(month), &links);
+    c.search.path = scope_path(scope);
+    c.search.view = data.view.as_ref().map(|w| (w.id, w.name.clone()));
     let filters = chips(&c, &path, data.view.as_ref(), &terms);
     let list = ListView {
         cards: cards(&c, &data.memos, &data.extras, true),
@@ -454,12 +495,18 @@ pub async fn month_fragment(app: &Arc<App>, req: &Request) -> Response {
         .unwrap_or_else(|| month_start_of(&c, &[]));
     let q = req.query("q").unwrap_or_default();
     let terms = query::parse(&q);
+    let scope = if req.query("scope").as_deref() == Some("archived") { Scope::Archived } else { Scope::Home };
+    let links = Filters {
+        path: format!("{}{}", c.base, scope_path(scope)),
+        view: req.query("view").and_then(|v| v.parse().ok()),
+        terms: terms.clone(),
+    };
     let (from, to) = v::month_range(month, &c.prefs.tz);
     let created = match app.db.with(move |conn| memos::created_between(conn, from, to)).await {
         Ok(v) => v,
         Err(e) => return e.into(),
     };
-    let month = v::month_view(&c.t, c.base, month, &created, &c.prefs.tz, c.now, selected_day(&terms));
+    let month = v::month_view(&c.t, month, &created, &c.prefs.tz, c.now, selected_day(&terms), &|d| links.day(d));
     html(&MonthFragment { c, month })
 }
 
@@ -511,6 +558,7 @@ pub async fn source(app: &Arc<App>, uid: &str) -> Response {
                 "rev": m.rev,
                 "content": m.content,
                 "createdTs": m.created_ts,
+                "updatedTs": m.updated_ts,
                 "attachments": a.iter().map(|x| attachment_json(&base, x)).collect::<Vec<_>>(),
                 "relations": r.iter().map(|l| serde_json::json!({"uid": l.uid, "snippet": l.snippet})).collect::<Vec<_>>(),
             }),

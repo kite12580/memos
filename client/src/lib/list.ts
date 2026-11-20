@@ -1,6 +1,6 @@
 import { $, $$, fromHTML } from "./dom";
 import { formatTimes } from "./time";
-import { initClamps } from "./cards";
+import { initClamps, markFresh } from "./cards";
 import { toastError } from "./toast";
 
 declare global {
@@ -50,6 +50,7 @@ async function loadMore(sentinel: HTMLElement, observer: IntersectionObserver) {
       formatTimes(c);
       initClamps(c);
     }
+    markFresh(list()!);
     if (next) {
       list()!.append(next);
       observer.observe(next);

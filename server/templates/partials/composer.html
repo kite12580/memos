@@ -12,6 +12,9 @@
 <button type="button" aria-label="{{ c.t.s("common.add") }}" aria-haspopup="menu" aria-expanded="false" data-popup="insert-menu" class="mu-button mu-button-neutral mu-button-icon mu-base mu-s-md mu-focus mu-menu-trigger">{{ h::icon("plus", "") }}</button>
 </div>
 <div class="flex shrink-0 flex-row items-center justify-end gap-1">
+{%- if composer.mode == "comment" %}
+<button type="button" data-cancel="" class="mu-button mu-button-ghost mu-base mu-s-md mu-focus"><span class="mu-button-label">{{ c.t.s("common.cancel") }}</span></button>
+{%- endif %}
 <button type="button" data-action="save" data-disabled="" aria-disabled="true" aria-keyshortcuts="Meta+Enter Control+Enter" class="mu-button mu-button-primary mu-base mu-s-md mu-focus"><span class="mu-button-label">{{ composer.save_label }}</span></button>
 <span class="mu-visually-hidden">{{ c.t.s("editor.validation.content-required") }}</span>
 </div>

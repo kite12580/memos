@@ -26,7 +26,9 @@ test("ticks a task from the card", async ({ page, request }) => {
   expect(res.ok()).toBeTruthy();
   const { uid } = await res.json();
   await page.goto(`/memos/${uid}`);
+  const ticked = page.waitForResponse((r) => r.url().includes("/task"));
   await page.locator('input.mbe-checkbox').first().click();
+  await ticked;
   await expect(page.locator("input.mbe-checkbox").first()).toBeChecked();
   const memo = await (await request.get(`/api/memos/${uid}`, auth)).json();
   expect(memo.content).toBe("- [x] tick me\n- [ ] not me");

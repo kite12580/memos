@@ -1,6 +1,6 @@
 import { createCanvas, drawingFileName, type ToolName } from "@usememos/canvas";
 import { icon } from "../lib/icon";
-import { closeDialog, openDialog } from "../lib/popup";
+import { closeLayer, openDialog } from "../lib/popup";
 import { toastError } from "../lib/toast";
 import type { Session } from "./index";
 import { uploadFile } from "./upload";
@@ -57,16 +57,16 @@ export function openDrawing(session: Session, t: (k: string) => string) {
           case "redo":
             return handle.redo();
           case "cancel":
-            return closeDialog(root);
+            return closeLayer(root);
           case "save": {
             handle.commitText();
-            if (handle.isEmpty()) return closeDialog(root);
+            if (handle.isEmpty()) return closeLayer(root);
             try {
               const png = await handle.exportPng();
               session.attachments.push(await uploadFile(png, drawingFileName()));
               session.renderExtras();
               session.changed();
-              closeDialog(root);
+              closeLayer(root);
             } catch (err) {
               toastError(err);
             }

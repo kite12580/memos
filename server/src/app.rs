@@ -3,7 +3,7 @@ use crate::config::Config;
 use crate::db::{Db, DbError};
 use crate::http::{MIN_COMPRESS_BYTES, Request, Response, accepts, decode_path, gzip_fast};
 use crate::profile::Profile;
-use crate::views::{Ctx, Prefs, TagStyles};
+use crate::views::{Ctx, Prefs, Search, TagStyles};
 use crate::{api, actions, files, i18n, pages};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -103,7 +103,7 @@ impl App {
             theme: prefs.theme_attr(),
             system_theme: prefs.theme == "system",
             prefs,
-            q: String::new(),
+            search: Search::default(),
             now: (self.now)(),
             tags: self.tag_styles(),
             profile: self.profile(),

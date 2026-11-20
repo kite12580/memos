@@ -2,7 +2,7 @@
 
 import { $, $$, post, reload } from "../lib/dom";
 import { icon } from "../lib/icon";
-import { closeAll, closeDialog, isOpenFor, listNav, openDialog, openTemplate } from "../lib/popup";
+import { closeAll, closeLayer, isOpenFor, listNav, openDialog, openTemplate } from "../lib/popup";
 import { toast, toastError } from "../lib/toast";
 
 export default function init(signal: AbortSignal) {
@@ -67,7 +67,7 @@ export default function init(signal: AbortSignal) {
 
   function valid() {
     if (title.value.trim() && filter.value.trim()) return true;
-    toast(s.required, "error");
+    toast(s.required, "danger");
     return false;
   }
 
@@ -88,7 +88,7 @@ export default function init(signal: AbortSignal) {
       $("[data-slot=title]", dialog)!.textContent = s.deleteConfirm.replace("{{title}}", name);
       $("[data-slot=description]", dialog)!.remove();
       $("[data-action=dialog-ok]", dialog)!.addEventListener("click", async () => {
-        closeDialog(dialog);
+        closeLayer(dialog);
         try {
           await post(`/views/${row.dataset.view}/delete`);
           sessionStorage.setItem("toast", s.deleted.replace("{{title}}", name));

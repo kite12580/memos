@@ -232,6 +232,7 @@ pub struct Edit {
     pub derived: Derived,
     pub snippet: String,
     pub created_ts: Option<i64>,
+    pub updated_ts: Option<i64>,
     pub now: i64,
 }
 
@@ -261,7 +262,7 @@ pub fn update(tx: &Transaction, uid: &str, rev: Option<i64>, e: Edit) -> DbResul
         d.has_code,
         d.has_image,
         e.created_ts.unwrap_or(cur.created_ts),
-        if touched { e.now } else { cur.updated_ts },
+        e.updated_ts.unwrap_or(if touched { e.now } else { cur.updated_ts }),
         cur.id
     ])?;
     set_tags(tx, cur.id, &d.tags)?;
@@ -329,7 +330,7 @@ pub fn delete(tx: &Transaction, uid: &str) -> DbResult<Option<Vec<String>>> {
 
 pub fn comments(c: &Connection, parent_id: i64) -> DbResult<Vec<Memo>> {
     Ok(c.prepare_cached(&format!(
-        "SELECT {COLUMNS} FROM memo m WHERE m.parent_id = ? ORDER BY m.created_ts, m.id"
+        "SELECT {COLUMNS} FROM memo m WHERE m.parent_id = ? ORDER BY m.created_ts DESC, m.id DESC"
     ))?
     .query_map([parent_id], memo)?
     .collect::<rusqlite::Result<_>>()?)
@@ -441,7 +442,7 @@ pub fn latest_comments(c: &Connection, ids: &[i64], per: usize) -> DbResult<Hash
         "SELECT {COLUMNS} FROM (
            SELECT *, row_number() OVER (PARTITION BY parent_id ORDER BY created_ts DESC, id DESC) AS n
            FROM memo WHERE parent_id IN ({})
-         ) m WHERE m.n <= {per} ORDER BY m.created_ts, m.id",
+         ) m WHERE m.n <= {per} ORDER BY m.created_ts DESC, m.id DESC",
         id_list(ids)
     );
     let mut st = c.prepare(&sql)?;

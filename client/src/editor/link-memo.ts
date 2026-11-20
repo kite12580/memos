@@ -1,6 +1,6 @@
 import { request } from "../lib/dom";
 import { icon } from "../lib/icon";
-import { closeDialog, openDialog } from "../lib/popup";
+import { closeLayer, openDialog } from "../lib/popup";
 import type { Session } from "./index";
 
 /** Search memos by text and link the picked one, as memos' Link memo dialog does. */
@@ -38,7 +38,7 @@ export function openLinkMemo(session: Session, t: (k: string) => string) {
             b.addEventListener("click", () => {
               session.relations.push(l);
               session.renderExtras();
-              closeDialog(root);
+              closeLayer(root);
             });
             return b;
           }),

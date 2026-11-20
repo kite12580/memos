@@ -41,7 +41,7 @@ test("creates, edits, reorders and deletes a saved view", async ({ page, request
   await page.locator("[data-save]").click();
   await expect(page.locator("[data-view]").filter({ hasText: "Tagged memos" })).toHaveCount(1);
 
-  await page.locator("#sidebar").getByRole("link", { name: "Tagged memos" }).click();
+  await page.locator("#sidebar").getByRole("button", { name: "Tagged memos" }).click();
   await expect(page).toHaveURL(/\/\?view=\d+$/);
   await expect(page.locator("#memo-list article")).toHaveCount(1);
   await expect(page.locator("#memo-list article")).toContainText("View target");
@@ -61,5 +61,5 @@ test("refuses a view without a title", async ({ page }) => {
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await page.locator("#view-filter").fill("is:pinned");
   await page.locator("[data-save]").click();
-  await expect(page.locator(".mu-toast-error")).toContainText("Title and filter cannot be empty");
+  await expect(page.locator(".mu-toast-danger")).toContainText("Title and filter cannot be empty");
 });

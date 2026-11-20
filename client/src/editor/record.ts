@@ -1,5 +1,5 @@
 import { icon } from "../lib/icon";
-import { closeDialog, openDialog } from "../lib/popup";
+import { closeLayer, openDialog } from "../lib/popup";
 import { toastError } from "../lib/toast";
 import type { Session } from "./index";
 import { uploadFile } from "./upload";
@@ -38,7 +38,7 @@ export async function openRecorder(session: Session, t: (k: string) => string) {
         const b = (e.target as HTMLElement).closest<HTMLElement>("[data-stop]");
         if (!b) return;
         keep = b.dataset.stop === "keep";
-        closeDialog(r);
+        closeLayer(r);
       });
       timer = window.setInterval(() => {
         const s = Math.floor((Date.now() - started) / 1000);

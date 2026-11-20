@@ -24,19 +24,32 @@ function inApp(url: URL) {
   return !/^\/(file|thumb|avatar|api|f|assets|favicon\.svg|healthz)(\/|$)/.test(path);
 }
 
+const FOCUSABLE = "a[href], button, [tabindex]";
+
+const chrome = () => $$<HTMLElement>(FOCUSABLE, $("#root")!).filter((el) => !el.closest("main"));
+
 function swap(doc: Document) {
   const html = document.documentElement;
-  for (const name of ["lang", "dir", "data-theme"]) html.setAttribute(name, doc.documentElement.getAttribute(name) ?? "");
-  if (doc.head.querySelector("script:not([src])")?.textContent?.includes("prefers-color-scheme") && matchMedia("(prefers-color-scheme: dark)").matches) {
-    html.setAttribute("data-theme", "dark");
+  for (const name of ["lang", "dir", "data-theme", "data-system"]) {
+    const value = doc.documentElement.getAttribute(name);
+    if (value === null) html.removeAttribute(name);
+    else html.setAttribute(name, value);
   }
+  if (html.dataset.system !== undefined && matchMedia("(prefers-color-scheme: dark)").matches) html.setAttribute("data-theme", "dark");
   document.title = doc.title;
   for (const sel of ["head > style", "link[rel=icon]", "meta[name=description]"]) {
     $$(sel).forEach((el) => el.remove());
     for (const el of doc.querySelectorAll(sel)) document.head.append(document.adoptNode(el));
   }
   const keep = sidebarScroll()?.scrollTop ?? 0;
+  const active = document.activeElement as HTMLElement;
+  const focused = chrome().indexOf(active);
+  const card = active.closest<HTMLElement>("main [data-card]");
+  const inCard = card ? $$(FOCUSABLE, card).indexOf(active) : -1;
   $("#root")!.replaceWith(document.adoptNode(doc.getElementById("root")!));
+  if (focused >= 0) chrome()[focused]?.focus({ preventScroll: true });
+  const again = card && $(`main [data-card="${card.dataset.card}"]`);
+  if (again && inCard >= 0) $$(FOCUSABLE, again)[inCard]?.focus({ preventScroll: true });
   $$("body > template").forEach((t) => t.remove());
   $("#toasts")!.before(...[...doc.querySelectorAll("body > template")].map((t) => document.adoptNode(t)));
   const side = sidebarScroll();

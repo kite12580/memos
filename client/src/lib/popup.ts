@@ -6,11 +6,14 @@ export type Align = "start" | "end" | "center";
 interface Layer {
   el: HTMLElement;
   trigger?: HTMLElement;
+  restore?: HTMLElement | null;
   onClose?: () => void;
 }
 
 const stack: Layer[] = [];
 const GAP = 6;
+const TABBABLE = 'a[href], button:not([disabled]), input:not([type=hidden], [type=file], [disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable=true], [tabindex]:not([tabindex="-1"])';
+const MENU = "[role=menu], .mu-select-popup";
 const ITEM = ':is([role^="menuitem"], [role="option"])[tabindex]';
 
 function highlight(scope: HTMLElement, item: HTMLElement | undefined, among = "*") {
@@ -51,7 +54,7 @@ export function listNav(
       const all = items();
       if (step && all.length) {
         const at = all.indexOf(nav.current()!);
-        nav.highlight(all[Math.min(all.length - 1, Math.max(0, at + step))]);
+        nav.highlight(all[at < 0 ? 0 : Math.min(all.length - 1, Math.max(0, at + step))]);
       } else if (e.key === "Enter") {
         const item = nav.current();
         pick(item);
@@ -66,16 +69,30 @@ export function listNav(
 }
 
 let closing: ReturnType<typeof setTimeout> | undefined;
+let keyboard = false;
+
+const popupOf = (layer: Layer) => (layer.el.firstElementChild as HTMLElement | null) ?? layer.el;
 
 function onPointerOver(e: PointerEvent) {
   const t = e.target as HTMLElement;
   const index = stack.findIndex((l) => l.el.contains(t));
   if (index === -1) {
-    for (const l of stack) highlight(l.el, undefined, ITEM);
+    const sub = stack.findIndex((l) => l.trigger?.matches("[data-submenu]"));
+    if (sub > 0 && e.pointerType === "mouse" && !stack[sub].trigger!.contains(t)) {
+      clearTimeout(closing);
+      closing = setTimeout(() => closeFrom(sub), 100);
+    }
+    for (const l of stack) {
+      if (popupOf(l).matches(".mu-select-popup")) continue;
+      highlight(l.el, undefined, ITEM);
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.matches(ITEM) && l.el.contains(active)) popupOf(l).focus({ preventScroll: true });
+    }
     return;
   }
   const layer = stack[index];
   clearTimeout(closing);
+  for (const l of stack) if (l !== layer && t.closest(ITEM)) highlight(l.el, undefined, ITEM);
   const child = stack[index + 1];
   if (child?.trigger && e.pointerType === "mouse" && !child.trigger.contains(t) && t.closest(`${ITEM}, .mu-menu-item`)) {
     closing = setTimeout(() => stack[index + 1] === child && closeFrom(index + 1), 100);
@@ -126,15 +143,21 @@ function place(positioner: HTMLElement, popup: HTMLElement, anchor: HTMLElement,
   popup.dataset.align = align;
 }
 
+let instant = false;
+
 /** Animates in with the package's `data-starting-style` hook. */
 export function enter(el: HTMLElement) {
+  if (instant) return void el.setAttribute("data-open", "");
   el.setAttribute("data-starting-style", "");
   el.setAttribute("data-open", "");
   requestAnimationFrame(() => requestAnimationFrame(() => el.removeAttribute("data-starting-style")));
 }
 
 export function closeFrom(index: number) {
-  for (const layer of stack.splice(index)) {
+  const closed = stack.splice(index);
+  const active = document.activeElement;
+  const lost = !active || active === document.body || closed.some((l) => l.el.contains(active));
+  for (const layer of closed.reverse()) {
     layer.el.remove();
     if (layer.trigger) {
       layer.trigger.removeAttribute("data-popup-open");
@@ -142,9 +165,61 @@ export function closeFrom(index: number) {
     }
     layer.onClose?.();
   }
+  const back = closed.at(-1)?.restore;
+  if (lost && back?.isConnected) back.focus({ preventScroll: true });
 }
 
 export const closeAll = () => closeFrom(0);
+
+export function closeFor(trigger: HTMLElement) {
+  const index = stack.findIndex((l) => l.trigger === trigger);
+  if (index >= 0) closeFrom(index);
+}
+
+function selectorOf(el: Element, scope: ParentNode) {
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  for (const name of ["data-popup", "data-submenu", "data-select"]) {
+    const value = el.getAttribute(name);
+    if (value) return `[${name}="${CSS.escape(value)}"]`;
+  }
+  const key = el.getAttribute("data-key");
+  if (!key) return null;
+  const byKey = `[data-key="${CSS.escape(key)}"]`;
+  return scope.querySelectorAll(byKey).length > 1 ? `${byKey}[data-value="${CSS.escape(el.getAttribute("data-value") ?? "")}"]` : byKey;
+}
+
+export interface Snapshot {
+  chain: string[];
+  focus: string | null;
+}
+
+export function snapshot(): Snapshot {
+  const chain: string[] = [];
+  for (const [i, layer] of stack.entries()) {
+    const sel = layer.trigger && selectorOf(layer.trigger, i ? stack[i - 1].el : document);
+    if (!sel) break;
+    chain.push(sel);
+  }
+  const active = document.activeElement;
+  const scope = stack[chain.length - 1]?.el ?? document;
+  return { chain, focus: active && scope.contains(active) ? selectorOf(active, scope) : null };
+}
+
+export async function restore({ chain, focus }: Snapshot) {
+  instant = true;
+  try {
+    for (const sel of chain) {
+      const scope = stack.at(-1)?.el ?? document;
+      const trigger = scope.querySelector<HTMLElement>(sel);
+      if (!trigger) break;
+      trigger.click();
+      for (let i = 0; i < 20 && !isOpenFor(trigger); i++) await new Promise((r) => setTimeout(r));
+    }
+  } finally {
+    instant = false;
+  }
+  if (focus) (stack.at(-1)?.el ?? document).querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
+}
 
 export function isOpenFor(trigger: HTMLElement) {
   return stack.some((l) => l.trigger === trigger);
@@ -167,9 +242,20 @@ export function openPopup(trigger: HTMLElement, popup: HTMLElement, side: Side =
   enter(popup);
   trigger.setAttribute("data-popup-open", "");
   trigger.setAttribute("aria-expanded", "true");
-  stack.push({ el: positioner, trigger, onClose });
-  const first = popup.querySelector<HTMLElement>('[role^="menuitem"], [role="option"], input, [tabindex="0"]');
-  if (first && !matchMedia("(pointer: coarse)").matches) first.focus({ preventScroll: true });
+  stack.push({ el: positioner, trigger, restore: trigger, onClose });
+  if (!popup.hasAttribute("tabindex")) popup.tabIndex = -1;
+  if (!matchMedia("(pointer: coarse)").matches) {
+    if (popup.matches(MENU)) {
+      const item = popup.querySelector<HTMLElement>(`${ITEM}[data-selected]`) ?? (keyboard ? popup.querySelector<HTMLElement>(ITEM) : null);
+      if (item) {
+        item.focus({ preventScroll: true });
+        highlight(popup, item, ITEM);
+      } else popup.focus({ preventScroll: true });
+    } else {
+      const first = [...popup.querySelectorAll<HTMLElement>(TABBABLE)].find((el) => el.getClientRects().length);
+      (first ?? popup).focus({ preventScroll: true });
+    }
+  }
   return positioner;
 }
 
@@ -185,6 +271,7 @@ export function openTemplate(trigger: HTMLElement, id: string, side: Side = "bot
 /** A modal dialog from a template holding a backdrop and a viewport. */
 export function openDialog(id: string, setup?: (root: HTMLElement) => void, onClose?: () => void) {
   closeAll();
+  const opener = document.activeElement;
   const frag = fromTemplate(id);
   if (!frag) return null;
   const root = document.createElement("div");
@@ -195,16 +282,17 @@ export function openDialog(id: string, setup?: (root: HTMLElement) => void, onCl
   for (const el of root.querySelectorAll<HTMLElement>(".mu-dialog-backdrop, .mu-dialog-popup")) enter(el);
   stack.push({
     el: root,
+    restore: opener instanceof HTMLElement ? opener : null,
     onClose: () => {
       document.body.style.overflow = "";
       onClose?.();
     },
   });
-  root.querySelector<HTMLElement>("input, textarea, [data-action=dialog-ok]")?.focus();
+  root.querySelector<HTMLElement>('input:not([type=hidden], [type=file]), textarea, [data-action=dialog-cancel], [data-action=dialog-ok]')?.focus();
   return root;
 }
 
-export function closeDialog(el: Element) {
+export function closeLayer(el: Element) {
   const index = stack.findIndex((l) => l.el.contains(el));
   if (index >= 0) closeFrom(index);
 }
@@ -215,7 +303,7 @@ function onKey(e: KeyboardEvent) {
   if (e.key === "Escape") {
     const top = stack[stack.length - 1];
     closeFrom(stack.length - 1);
-    top.trigger?.focus();
+    top.restore?.focus();
     e.preventDefault();
     return;
   }
@@ -223,6 +311,36 @@ function onKey(e: KeyboardEvent) {
   const found = stack.findIndex((l) => l.el.contains(active));
   const index = found === -1 ? stack.length - 1 : found;
   const layer = stack[index];
+  const top = stack[stack.length - 1];
+  if (e.key === "Tab" && !top.trigger) {
+    const all = [...top.el.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.getClientRects().length);
+    const at = all.indexOf(active);
+    const next = e.shiftKey ? (at <= 0 ? all.at(-1) : undefined) : at === all.length - 1 || at === -1 ? all[0] : undefined;
+    if (next) {
+      next.focus();
+      e.preventDefault();
+    }
+    return;
+  }
+  if (e.key === "Tab" && layer.trigger) {
+    if (!popupOf(layer).matches(MENU)) {
+      const all = [...layer.el.querySelectorAll<HTMLElement>(TABBABLE)].filter((el) => el.getClientRects().length);
+      const at = all.indexOf(active);
+      if (at === -1 && all.length && !e.shiftKey) {
+        all[0].focus();
+        e.preventDefault();
+        return;
+      }
+      if (e.shiftKey ? at > 0 : at >= 0 && at < all.length - 1) return;
+    }
+    let outer = index;
+    while (outer > 0 && stack[outer].trigger?.closest("[role=menu]")) outer--;
+    const trigger = stack[outer].trigger;
+    closeFrom(outer);
+    trigger?.focus({ preventScroll: true });
+    if (e.shiftKey) e.preventDefault();
+    return;
+  }
   const rtl = document.documentElement.dir === "rtl";
   if (e.key === (rtl ? "ArrowLeft" : "ArrowRight") && active.matches("[data-submenu]") && layer.el.contains(active)) {
     active.click();
@@ -238,26 +356,47 @@ function onKey(e: KeyboardEvent) {
   const items = [...layer.el.querySelectorAll<HTMLElement>(ITEM)].filter((i) => !i.hidden);
   if (!items.length) return;
   const at = items.indexOf(active);
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    const next = items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length];
+  const move = (next: HTMLElement | undefined) => {
+    if (!next) return;
     closeFrom(index + 1);
     next.focus();
     highlight(layer.el, next, ITEM);
     e.preventDefault();
-  } else if ((e.key === "Enter" || e.key === " ") && at >= 0) {
+  };
+  if (e.key === "ArrowDown") move(items[at < 0 ? 0 : (at + 1) % items.length]);
+  else if (e.key === "ArrowUp") move(items[at < 0 ? items.length - 1 : (at + items.length - 1) % items.length]);
+  else if (e.key === "Home") move(items[0]);
+  else if (e.key === "End") move(items[items.length - 1]);
+  else if ((e.key === "Enter" || e.key === " ") && at >= 0) {
     items[at].click();
     e.preventDefault();
+  } else if (e.key.length === 1 && e.key !== " " && !e.metaKey && !e.ctrlKey && !e.altKey && !active.matches("input, textarea")) {
+    clearTimeout(typedTimer);
+    typed += e.key.toLowerCase();
+    typedTimer = setTimeout(() => (typed = ""), 500);
+    const from = typed.length > 1 ? Math.max(at, 0) : at + 1;
+    const order = [...items.slice(from), ...items.slice(0, from)];
+    move(order.find((i) => (i.textContent ?? "").trim().toLowerCase().startsWith(typed)));
   }
 }
 
+let typed = "";
+let typedTimer: ReturnType<typeof setTimeout> | undefined;
+
 export function initPopups() {
+  document.addEventListener("keydown", () => (keyboard = true), true);
   document.addEventListener(
     "pointerdown",
     (e) => {
+      keyboard = false;
       const t = e.target as Node;
-      const index = stack.findIndex((l) => l.el.contains(t) || l.trigger?.contains(t));
-      if (index === -1) closeAll();
-      else if (!stack[index].el.contains(t)) return;
+      const index = stack.findLastIndex((l) => l.el.contains(t) || l.trigger?.contains(t));
+      if (index === -1) {
+        if (!stack.length) return;
+        const back = stack[0].restore;
+        closeAll();
+        addEventListener("pointerup", () => setTimeout(() => document.activeElement === document.body && back?.isConnected && back.focus({ preventScroll: true })), { once: true });
+      } else if (!stack[index].el.contains(t)) return;
       else closeFrom(index + 1);
     },
     true,

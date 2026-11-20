@@ -47,6 +47,7 @@ export async function openPicker(trigger: HTMLElement, reacted: string[], pick: 
     options = findEmoji(input.value);
     list.scrollTop = 0;
     draw();
+    nav.highlight(input.value ? (canvas.querySelector<HTMLElement>("[data-emoji]") ?? undefined) : undefined);
   });
   list.addEventListener("scroll", draw, { passive: true });
   list.addEventListener("click", (e) => {
@@ -57,7 +58,9 @@ export async function openPicker(trigger: HTMLElement, reacted: string[], pick: 
     closeAll();
     pick(emoji);
   };
-  listNav(list, input, () => [...canvas.querySelectorAll<HTMLElement>("[data-emoji]")], (c) => choose(c?.dataset.emoji ?? options[0]?.emoji), { steps: {} });
+  const nav = listNav(list, input, () => [...canvas.querySelectorAll<HTMLElement>("[data-emoji]")], (c) => choose(c?.dataset.emoji), {
+    steps: { ArrowRight: 1, ArrowLeft: -1, ArrowDown: COLUMNS, ArrowUp: -COLUMNS },
+  });
   openPopup(trigger, popup, "bottom", "start");
   draw();
   input.focus({ preventScroll: true });

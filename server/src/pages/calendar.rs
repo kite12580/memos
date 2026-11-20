@@ -376,8 +376,8 @@ pub async fn calendar(app: &Arc<App>, req: &Request, month: Option<&str>) -> Res
     };
     let sb = Sidebar {
         active: "calendar",
-        views: Some(super::view_rows(&views)),
-        tags: Some(v::tag_rows(c.base, &tags, c.prefs.tag_tree, None)),
+        views: Some(super::view_rows(&views, &super::Filters::home(c.base))),
+        tags: Some(v::tag_rows(&tags, c.prefs.tag_tree, None, &|t| super::Filters::home(c.base).tag(t))),
         ..Default::default()
     };
     let open_key = open.map(|d| d.strftime("%Y-%m-%d").to_string());

@@ -87,7 +87,7 @@ impl SettingsPage<'_> {
         self.c
             .layout_options()
             .into_iter()
-            .map(|(value, _, _, label)| Choice {
+            .map(|(value, _, _, label, _)| Choice {
                 value,
                 selected: self.c.prefs.is_layout(value),
                 label,

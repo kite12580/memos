@@ -163,6 +163,7 @@ pub async fn handle(app: &Arc<App>, req: Request) -> Response {
                                     html,
                                     html_ver: String::new(),
                                     created_ts: b["createdTs"].as_i64(),
+                                    updated_ts: b["updatedTs"].as_i64(),
                                     now,
                                 };
                                 if let Outcome::NotFound | Outcome::Conflict = memos::update(c, &uid, b["rev"].as_i64(), edit)? {
