@@ -293,7 +293,10 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("pointerover", (e) => {
   const sub = (e.target as HTMLElement).closest<HTMLElement>("[data-submenu]");
-  if (sub && matchMedia("(pointer: fine)").matches && !isOpenFor(sub)) openTemplate(sub, sub.dataset.submenu!, "inline-end", "start");
+  if (sub && matchMedia("(pointer: fine)").matches && !isOpenFor(sub)) {
+    openTemplate(sub, sub.dataset.submenu!, "inline-end", "start");
+    sub.focus({ preventScroll: true });
+  }
 });
 
 // Typing in the server-rendered composer works at once; the editor takes over its text when it loads.

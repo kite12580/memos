@@ -94,3 +94,36 @@ test("closes a hovered submenu when the pointer moves to another item", async ({
   await page.locator("[data-action=delete]").hover();
   await expect(copy).toBeHidden();
 });
+
+test("clears the highlight when the pointer leaves the menu", async ({ page, request }) => {
+  await memo(request, "Leave memo");
+  await page.goto("/");
+  await page.locator("article", { hasText: "Leave memo" }).locator("[data-popup=memo-menu]").click();
+  const pin = page.locator(".mu-menu-popup [data-action=pin]").first();
+  await pin.hover();
+  await expect(pin).toHaveAttribute("data-highlighted", "");
+  await page.mouse.move(700, 700);
+  await expect(pin).not.toHaveAttribute("data-highlighted");
+});
+
+test("opens and closes a submenu with the arrow keys", async ({ page, request }) => {
+  await memo(request, "Arrow memo");
+  await page.goto("/");
+  await page.locator("article", { hasText: "Arrow memo" }).locator("[data-popup=memo-menu]").click();
+  const trigger = page.locator("[data-submenu=tpl-copy-menu]");
+  await trigger.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("[data-action=copy-link]")).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("[data-action=copy-link]")).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
+test("a submenu opened by hover leaves focus on its trigger", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("[data-popup=brand]").first().click();
+  const theme = page.locator("[data-submenu=tpl-theme-menu]");
+  await theme.hover();
+  await expect(page.locator("[data-key=theme]").first()).toBeVisible();
+  await expect(theme).toBeFocused();
+});

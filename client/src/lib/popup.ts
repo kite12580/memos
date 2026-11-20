@@ -70,7 +70,10 @@ let closing: ReturnType<typeof setTimeout> | undefined;
 function onPointerOver(e: PointerEvent) {
   const t = e.target as HTMLElement;
   const index = stack.findIndex((l) => l.el.contains(t));
-  if (index === -1) return;
+  if (index === -1) {
+    for (const l of stack) highlight(l.el, undefined, ITEM);
+    return;
+  }
   const layer = stack[index];
   clearTimeout(closing);
   const child = stack[index + 1];
@@ -216,14 +219,30 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault();
     return;
   }
-  const top = stack[stack.length - 1].el;
-  const items = [...top.querySelectorAll<HTMLElement>(ITEM)].filter((i) => !i.hidden);
+  const active = document.activeElement as HTMLElement;
+  const found = stack.findIndex((l) => l.el.contains(active));
+  const index = found === -1 ? stack.length - 1 : found;
+  const layer = stack[index];
+  const rtl = document.documentElement.dir === "rtl";
+  if (e.key === (rtl ? "ArrowLeft" : "ArrowRight") && active.matches("[data-submenu]") && layer.el.contains(active)) {
+    active.click();
+    e.preventDefault();
+    return;
+  }
+  if (e.key === (rtl ? "ArrowRight" : "ArrowLeft") && index > 0 && layer.trigger?.matches("[data-submenu]")) {
+    closeFrom(index);
+    layer.trigger.focus();
+    e.preventDefault();
+    return;
+  }
+  const items = [...layer.el.querySelectorAll<HTMLElement>(ITEM)].filter((i) => !i.hidden);
   if (!items.length) return;
-  const at = items.indexOf(document.activeElement as HTMLElement);
+  const at = items.indexOf(active);
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     const next = items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length];
+    closeFrom(index + 1);
     next.focus();
-    highlight(top, next, ITEM);
+    highlight(layer.el, next, ITEM);
     e.preventDefault();
   } else if ((e.key === "Enter" || e.key === " ") && at >= 0) {
     items[at].click();
