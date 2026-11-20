@@ -401,7 +401,11 @@ async function start(composer: HTMLElement, focus: boolean) {
   });
   session.hosted = hosts.get(composer);
   sessions.set(composer, session);
-  session.mount([draft.trim(), typed].filter(Boolean).join("\n\n"), focus || composer.contains(document.activeElement));
+  const focused = focus || composer.contains(document.activeElement);
+  session.mount([draft.trim(), typed].filter(Boolean).join("\n\n"), focused);
+  const [, before = "", query = ""] = /(?:^|\n)([^\n]*?)[#＃]([^\s#＃]*)$/.exec(typed) ?? [];
+  const tagging = /(^|[ \t])$/.test(before) && (query || before.trim());
+  if (focused && tagging) session.editor.suggestion.open("tags");
   composer.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
     if (target.closest("[data-action=save]")) void session.save();

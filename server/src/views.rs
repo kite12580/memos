@@ -23,6 +23,7 @@ pub struct Prefs {
     pub full_width: bool,
     pub tag_tree: bool,
     pub sidebar_width: u32,
+    pub panel_width: u32,
     pub tz: TimeZone,
 }
 
@@ -47,6 +48,9 @@ impl Prefs {
             sidebar_width: cookie("sw")
                 .and_then(|w| w.parse().ok())
                 .map_or(256, |w: u32| w.clamp(224, 400)),
+            panel_width: cookie("pw")
+                .and_then(|w| w.parse().ok())
+                .map_or(400, |w: u32| w.clamp(320, 640)),
             tz: cookie("tz")
                 .and_then(|z| TimeZone::get(&z).ok())
                 .unwrap_or_else(|| default_tz.clone()),
@@ -98,7 +102,7 @@ impl Prefs {
     /// A short key of everything that changes rendered HTML, for ETags.
     pub fn key(&self) -> String {
         format!(
-            "{}{}{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}-{}{}",
             self.theme,
             self.layout,
             u8::from(self.by_updated),
@@ -107,6 +111,7 @@ impl Prefs {
             u8::from(self.full_width),
             u8::from(self.tag_tree),
             self.sidebar_width,
+            self.panel_width,
             self.tz.iana_name().unwrap_or("")
         )
     }
@@ -682,7 +687,7 @@ pub struct Card {
     pub html: Html,
     pub time_iso: String,
     pub time_text: String,
-    /// `rel` for a relative time, `date` for a weekday and date.
+    /// `rel` for a relative time, `date` for a weekday and date, `full` for date and time.
     pub time_mode: &'static str,
     pub time_title: String,
     pub updated_label: bool,
@@ -900,7 +905,7 @@ pub fn card(c: &Ctx, m: &Memo, d: &CardData, in_list: bool) -> Card {
     }
     let shown_ts = if c.prefs.by_updated { m.updated_ts } else { m.created_ts };
     let (time_mode, time_text) = if m.archived {
-        ("date", date_text(shown_ts, c.now, tz))
+        ("full", local(shown_ts, tz))
     } else {
         time_text(shown_ts, c.now, tz)
     };

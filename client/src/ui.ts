@@ -264,27 +264,88 @@ export function playAudio(button: HTMLElement) {
   }
 }
 
-export function initResize() {
-  const handle = $("[data-resize=sidebar]");
-  if (!handle || handle.dataset.ready) return;
-  handle.dataset.ready = "1";
-  handle.addEventListener("pointerdown", (e) => {
-    const root = handle.closest<HTMLElement>("[style*=--app-sidebar-width]")!;
-    handle.setPointerCapture(e.pointerId);
-    let width = 0;
-    const move = (ev: PointerEvent) => {
-      width = Math.round(Math.min(400, Math.max(224, ev.clientX)));
-      root.style.setProperty("--app-sidebar-width", `${width}px`);
-    };
-    const up = () => {
-      handle.removeEventListener("pointermove", move);
-      if (width) setPref("sw", String(width), false);
-    };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", up, { once: true });
-  });
+const RESERVED_BESIDE_PANEL = 48 + 2 + 7 * 100 - 12;
+
+const sidebarWidth = () => parseFloat(getComputedStyle(document.documentElement.querySelector("[style*=--app-sidebar-width]") ?? document.body).getPropertyValue("--app-sidebar-width")) || 0;
+
+/** The panel's width capped to what the window leaves beside the calendar, as memos does. */
+export function fitPanel() {
+  const root = $<HTMLElement>("[style*=--memo-panel-width]");
+  const handle = $("[data-resize=panel]");
+  if (!root || !handle) return;
+  const max = Math.max(320, Math.min(640, innerWidth - sidebarWidth() - 24 - RESERVED_BESIDE_PANEL));
+  const width = Math.min(Number(handle.getAttribute("aria-valuenow")), max);
+  root.style.setProperty("--memo-panel-width", `${width}px`);
+  handle.setAttribute("aria-valuenow", String(width));
+  handle.setAttribute("aria-valuemax", String(max));
 }
 
+const RAILS = {
+  sidebar: { variable: "--app-sidebar-width", pref: "sw", min: 224, max: () => 400, initial: 256, grow: 1 },
+  panel: { variable: "--memo-panel-width", pref: "pw", min: 320, max: () => Math.max(320, Math.min(640, innerWidth - sidebarWidth() - 24 - RESERVED_BESIDE_PANEL)), initial: 400, grow: -1 },
+};
+
+const GRIP_REST = ["bg-mu-text-secondary/50", "opacity-0", "group-hover:opacity-100", "group-focus-visible:bg-mu-primary/70", "group-focus-visible:opacity-100"];
+const GRIP_DRAG = ["bg-mu-primary/70", "opacity-100"];
+const LINE_REST = ["bg-transparent", "group-hover:bg-mu-line", "group-focus-visible:bg-mu-primary/70"];
+const LINE_DRAG = ["bg-mu-primary/70"];
+
+/** memos' SidebarResizeHandle: drag by delta, arrows step 16px, Home and End, double-click resets. */
+export function initResize() {
+  for (const handle of $$("[data-resize]")) {
+    if (handle.dataset.ready) continue;
+    handle.dataset.ready = "1";
+    const rail = RAILS[handle.dataset.resize as keyof typeof RAILS];
+    const target = handle.closest<HTMLElement>(`[style*="${rail.variable}"]`) ?? $<HTMLElement>(`[style*="${rail.variable}"]`)!;
+    const bar = handle.firstElementChild as HTMLElement;
+    const [rest, drag] = rail.grow < 0 ? [GRIP_REST, GRIP_DRAG] : [LINE_REST, LINE_DRAG];
+    const sign = () => rail.grow * (getComputedStyle(handle).direction === "rtl" ? -1 : 1);
+    const current = () => Number(handle.getAttribute("aria-valuenow"));
+    const clamp = (w: number) => Math.min(Math.max(Math.round(w), rail.min), rail.max());
+    const preview = (w: number) => target.style.setProperty(rail.variable, `${w}px`);
+    const commit = (w: number) => {
+      w = clamp(w);
+      preview(w);
+      handle.setAttribute("aria-valuenow", String(w));
+      handle.setAttribute("aria-valuemax", String(rail.max()));
+      void setPref(rail.pref, String(w), false);
+    };
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      const x = e.clientX;
+      const from = current();
+      let width = from;
+      bar.classList.remove(...rest);
+      bar.classList.add(...drag);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const move = (ev: PointerEvent) => preview((width = clamp(from + sign() * (ev.clientX - x))));
+      const end = () => {
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", end);
+        handle.removeEventListener("pointercancel", end);
+        bar.classList.remove(...drag);
+        bar.classList.add(...rest);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        if (width !== from) commit(width);
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", end);
+      handle.addEventListener("pointercancel", end);
+    });
+    handle.addEventListener("dblclick", () => commit(rail.initial));
+    handle.addEventListener("keydown", (e) => {
+      const step = sign() * 16;
+      const next = { ArrowLeft: current() - step, ArrowRight: current() + step, Home: rail.min, End: rail.max() }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      commit(next);
+    });
+  }
+}
 
 export function openViewMenu(trigger: HTMLElement) {
   const { viewId: view, name } = trigger.dataset as { viewId: string; name: string };
