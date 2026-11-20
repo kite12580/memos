@@ -11,6 +11,9 @@
 @source "../../../server/templates";
 @source "../../../server/src";
 @source "../";
+/* build.mjs gives the attachment preview a stylesheet of its own. */
+@source not "../preview.ts";
+@source not "../../../server/templates/partials/attachment_details.html";
 
 /*
  * Rich text in the memo editor: everything outside its source mode, which shows the

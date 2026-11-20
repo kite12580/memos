@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { auth, memo, png, upload } from "./pages-helpers";
+import { auth, exifJpeg, memo, png, upload } from "./pages-helpers";
 
 const composer = "[data-composer=create] .memo-editor-root";
 
@@ -66,7 +66,7 @@ test("a tag in a memo filters by it, from the mouse or the keyboard", async ({ p
   await expect(page).toHaveURL(/\/\?q=%23clickme$/);
 });
 
-test("opens an image preview from the keyboard and closes it with Escape", async ({ page, request }) => {
+test("opens an image preview and its details from the keyboard and closes them with Escape", async ({ page, request }) => {
   const image = await upload(request, "kb.png", "image/png", png());
   const uid = await memo(request, "keyboard preview", { attachments: [image] });
   await page.goto(`/memos/${uid}`);
@@ -74,9 +74,62 @@ test("opens an image preview from the keyboard and closes it with Escape", async
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "kb.png" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Close preview" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  const info = page.getByRole("button", { name: "Show attachment details" });
+  await expect(info).toBeFocused();
+  await expect(info).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Enter");
+  const details = page.getByRole("complementary", { name: "Details" });
+  await expect(details).toContainText("PNG · ");
+  await expect(details).toContainText("No saved capture metadata.");
+  await expect(page.getByRole("button", { name: "Hide attachment details" }).first()).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Hide attachment details" }).first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "kb.png" })).toBeVisible();
+  await expect(info).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator("[data-action=preview]")).toBeFocused();
+});
+
+test("saves photo metadata when asked and shows it in the preview details", async ({ page, request }) => {
+  await page.goto("/settings#preference");
+  await page.getByRole("switch", { name: "Save media metadata" }).click();
+  await expect(page.getByRole("switch", { name: "Save media metadata" })).toHaveAttribute("aria-checked", "true");
+  await page.goto("/");
+  await page.locator("[data-composer=create] .memo-editor-root").click();
+  await page.keyboard.type("exif photo");
+  await page.locator("[data-composer=create] [data-popup=insert-menu]").click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.locator("[data-insert=attachment]").click();
+  await (await chooser).setFiles({ name: "exif.jpg", mimeType: "image/jpeg", buffer: exifJpeg() });
+  await expect(page.locator("[data-composer=create] [data-composer-extras] img")).toHaveCount(1);
+  await page.locator("[data-composer=create] [data-action=save]").click();
+  await page.locator("#memo-list article").filter({ hasText: "exif photo" }).locator("[data-action=preview]").click();
+  await page.getByRole("button", { name: "Show attachment details" }).click();
+  const details = page.getByRole("complementary", { name: "Details" });
+  await expect(details).toContainText("Canon Canon EOS R6");
+  await expect(details).toContainText("ƒ/2.8");
+  await expect(details).toContainText("May 1, 2024, 02:23:45 PM");
+  await expect(details).toContainText("Time zone unknown");
+  await expect(details).not.toContainText("No saved capture metadata.");
+
+  const media = JSON.stringify({ photo: { location: { latitude: 48.8582, longitude: 2.2945, altitudeMeters: 35.5 } } });
+  const res = await request.post(`/api/memos/attachments?name=gps.jpg&type=image%2Fjpeg&w=4&h=4&media=${encodeURIComponent(media)}`, { headers: auth, data: png() });
+  const uid = await memo(request, "gps photo", { attachments: [(await res.json()).uid] });
+  await page.goto(`/memos/${uid}`);
+  await page.locator("[data-action=preview]").click();
+  await page.getByRole("button", { name: "Show attachment details" }).click();
+  await expect(details).toContainText("4 × 4 px");
+  await expect(details).toContainText("48.85820°, 2.29450°");
+  await expect(details).toContainText("Altitude · 35.5 m");
+  await details.getByRole("button", { name: "Copy coordinates" }).click();
+  await expect(details.getByRole("button", { name: "Coordinates copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("48.8582, 2.2945");
+  await page.mouse.click(200, 450);
+  await expect(details).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "gps.jpg" })).toBeVisible();
 });
 
 test("switches toggle from the keyboard", async ({ page }) => {

@@ -1,6 +1,7 @@
 use crate::app::App;
 use crate::db::attachments::{self as atts, Attachment, Kind, Section};
 use crate::h::{self, Html};
+use crate::media;
 use crate::http::{Request, Response, encode_component};
 use crate::views::{self as v, Ctx, NavGroup, NavRow, Sidebar};
 use askama::Template;
@@ -115,6 +116,105 @@ impl AttachmentsPage<'_> {
 struct AttachmentsFragment<'a> {
     c: Ctx<'a>,
     lib: Library,
+}
+
+/// memos' MediaMetadataDetails for one attachment, worded as buildMediaMetadataDisplay words it.
+pub struct Details {
+    pub name: String,
+    pub file: String,
+    pub dimensions: Option<String>,
+    pub duration: Option<String>,
+    pub uploaded_iso: String,
+    pub uploaded: String,
+    pub captured: Option<(String, String)>,
+    pub utc_offset: Option<String>,
+    pub camera: Option<String>,
+    pub lens: Option<String>,
+    pub exposure: Option<String>,
+    pub location: Option<Location>,
+    pub orientation: Option<i64>,
+    pub saved: bool,
+}
+
+pub struct Location {
+    pub coordinates: String,
+    pub altitude: Option<String>,
+    pub copy: String,
+}
+
+impl Details {
+    pub fn new(a: &Attachment, tz: &jiff::tz::TimeZone) -> Details {
+        let media: Option<serde_json::Value> = a.media.as_deref().and_then(|m| serde_json::from_str(m).ok());
+        let photo = media.as_ref().and_then(|m| m.get("photo"));
+        let f = |k: &str| photo.and_then(|p| p.get(k)).and_then(serde_json::Value::as_f64);
+        let s = |k: &str| photo.and_then(|p| p.get(k)).and_then(serde_json::Value::as_str).map(str::to_string);
+        let capture = photo.and_then(|p| p.get("captureTime"));
+        let captured = capture
+            .and_then(|c| c.get("localDateTime")?.as_str()?.get(..19)?.parse::<jiff::civil::DateTime>().ok())
+            .map(|d| (format!("{}Z", d.strftime("%Y-%m-%dT%H:%M:%S")), d.strftime("%b %-d, %Y, %I:%M:%S %p").to_string()));
+        let exposure = [
+            f("fNumber").map(|n| format!("ƒ/{}", media::number(n, 2))),
+            f("exposureTimeSeconds").map(media::exposure_time),
+            photo.and_then(|p| p.get("iso")?.as_i64()).map(|n| format!("ISO {n}")),
+            f("focalLengthMm").map(|n| format!("{} mm", media::number(n, 2))),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ");
+        let location = photo.and_then(|p| p.get("location")).and_then(|l| {
+            let (lat, lon) = (l.get("latitude")?.as_f64()?, l.get("longitude")?.as_f64()?);
+            Some(Location {
+                coordinates: format!("{lat:.5}°, {lon:.5}°"),
+                altitude: l.get("altitudeMeters").and_then(serde_json::Value::as_f64).map(|m| format!("{} m", media::number(m, 1))),
+                copy: format!("{lat}, {lon}"),
+            })
+        });
+        let camera = [s("cameraMake"), s("cameraModel")].into_iter().flatten().collect::<Vec<_>>().join(" ");
+        Details {
+            name: a.filename.clone(),
+            file: if a.size > 0 { format!("{} · {}", type_label(&a.mime), file_size(a.size)) } else { type_label(&a.mime) },
+            dimensions: media.as_ref().and(a.width.zip(a.height)).map(|(w, h)| format!("{w} × {h} px")),
+            duration: media.as_ref().and_then(|m| m.get("video")?.get("durationSeconds")?.as_f64()).map(media::duration),
+            uploaded_iso: h::iso(a.created_ts),
+            uploaded: Timestamp::from_second(a.created_ts)
+                .map(|t| t.to_zoned_datetime(tz.clone()).strftime("%b %-d, %Y, %-I:%M %p").to_string())
+                .unwrap_or_default(),
+            utc_offset: capture.and_then(|c| c.get("utcOffset")?.as_str()).map(|o| if o == "Z" { "UTC".into() } else { format!("UTC{o}") }),
+            captured,
+            camera: Some(camera).filter(|c| !c.is_empty()),
+            lens: s("lensModel"),
+            exposure: Some(exposure).filter(|e| !e.is_empty()),
+            location,
+            orientation: photo.and_then(|p| p.get("sourceExifOrientation")?.as_i64()),
+            saved: media.is_some(),
+        }
+    }
+
+    pub fn has_camera(&self) -> bool {
+        self.camera.is_some() || self.lens.is_some() || self.exposure.is_some()
+    }
+}
+
+#[derive(Template)]
+#[template(path = "partials/attachment_details.html")]
+struct DetailsFragment<'a> {
+    c: Ctx<'a>,
+    d: Details,
+}
+
+/// The details panel of the attachment preview.
+pub async fn attachment_details(app: &Arc<App>, req: &Request, uid: &str) -> Response {
+    let c = app.ctx(req);
+    let uid = uid.to_string();
+    match app.db.with(move |conn| atts::get(conn, &uid)).await {
+        Ok(Some(a)) => {
+            let d = Details::new(&a, &c.prefs.tz);
+            super::html(&DetailsFragment { c, d }).with("cache-control", "private, no-cache")
+        }
+        Ok(None) => Response::not_found(),
+        Err(e) => e.into(),
+    }
 }
 
 /// memos' formatFileSize: bytes, then one decimal of the largest unit.

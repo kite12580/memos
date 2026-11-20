@@ -6,7 +6,7 @@ mod extras;
 mod settings;
 mod views;
 
-pub use attachments::{attachments, attachments_fragment};
+pub use attachments::{attachment_details, attachments, attachments_fragment};
 pub use calendar::{calendar, day_fragment};
 pub use extras::extras;
 pub use settings::settings;

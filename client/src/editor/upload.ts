@@ -26,14 +26,26 @@ async function imageThumb(file: Blob): Promise<{ blob: Blob | null; width: numbe
   return { blob, width, height };
 }
 
-/** A frame from early in a video, for its poster. */
-function videoThumb(file: Blob): Promise<Blob | null> {
+interface VideoInfo {
+  blob: Blob | null;
+  width?: number;
+  height?: number;
+  duration?: number;
+}
+
+/** A frame from early in a video, for its poster, with the size and length memos saves. */
+function videoThumb(file: Blob): Promise<VideoInfo> {
   return new Promise((resolve) => {
     const video = document.createElement("video");
     const url = URL.createObjectURL(file);
-    const done = (b: Blob | null) => {
+    const done = (blob: Blob | null) => {
       URL.revokeObjectURL(url);
-      resolve(b);
+      resolve({
+        blob,
+        width: video.videoWidth || undefined,
+        height: video.videoHeight || undefined,
+        duration: Number.isFinite(video.duration) && video.duration >= 0 ? video.duration : undefined,
+      });
     };
     video.muted = true;
     video.preload = "metadata";
@@ -62,6 +74,8 @@ export async function uploadFile(file: File | Blob, name = (file as File).name |
   const type = file.type || "application/octet-stream";
   let thumb: Blob | null = null;
   const params = new URLSearchParams({ name, type });
+  const saveMedia = document.cookie.split("; ").includes("media=1");
+  let media: object | undefined;
   if (type.startsWith("image/") && type !== "image/svg+xml") {
     try {
       const t = await imageThumb(file);
@@ -71,9 +85,20 @@ export async function uploadFile(file: File | Blob, name = (file as File).name |
     } catch {
       thumb = null;
     }
+    if (saveMedia) {
+      const photo = await (await import("./media")).photoMetadata(file);
+      media = photo ? { photo } : {};
+    }
   } else if (type.startsWith("video/")) {
-    thumb = await videoThumb(file);
+    const v = await videoThumb(file);
+    thumb = v.blob;
+    if (v.width && v.height) {
+      params.set("w", String(v.width));
+      params.set("h", String(v.height));
+    }
+    if (saveMedia) media = v.duration === undefined ? {} : { video: { durationSeconds: v.duration } };
   }
+  if (media) params.set("media", JSON.stringify(media));
   const res = await fetch(`${base}/attachments?${params}`, { method: "POST", body: file });
   if (!res.ok) throw new Error((await res.text()) || res.statusText);
   const a: Uploaded = await res.json();

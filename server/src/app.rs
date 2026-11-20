@@ -199,6 +199,7 @@ impl App {
             (true, _, ["f", "links"]) => pages::link_search(self, &req).await,
             (true, _, ["f", "extras"]) => pages::extras(self, &req).await,
             (true, _, ["f", "attachments"]) => pages::attachments_fragment(self, &req).await,
+            (true, _, ["f", "attachments", uid]) => pages::attachment_details(self, &req, uid).await,
             (true, _, ["f", "strings"]) => {
                 let c = self.ctx(&req);
                 Response::new(200)

@@ -31,6 +31,43 @@ export function png(rgb: [number, number, number] = [128, 128, 128]): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
+/** A JPEG holding only an EXIF segment: camera, capture time and aperture. */
+export function exifJpeg(): Buffer {
+  const ascii = (s: string) => Buffer.from(`${s}\0`, "latin1");
+  const u32 = (n: number) => {
+    const b = Buffer.alloc(4);
+    b.writeUInt32LE(n);
+    return b;
+  };
+  const ifd = (at: number, entries: [number, number, number, Buffer][]) => {
+    const head = Buffer.alloc(2 + entries.length * 12 + 4);
+    head.writeUInt16LE(entries.length);
+    let data = Buffer.alloc(0);
+    entries.forEach(([tag, type, count, value], i) => {
+      const e = 2 + i * 12;
+      head.writeUInt16LE(tag, e);
+      head.writeUInt16LE(type, e + 2);
+      head.writeUInt32LE(count, e + 4);
+      if (value.length <= 4) value.copy(head, e + 8);
+      else {
+        head.writeUInt32LE(at + head.length + data.length, e + 8);
+        data = Buffer.concat([data, value]);
+      }
+    });
+    return Buffer.concat([head, data]);
+  };
+  const make = ascii("Canon");
+  const model = ascii("Canon EOS R6");
+  const ifd0 = (exifAt: number) => ifd(8, [[0x010f, 2, make.length, make], [0x0110, 2, model.length, model], [0x8769, 4, 1, u32(exifAt)]]);
+  const exifAt = 8 + ifd0(0).length;
+  const date = ascii("2024:05:01 14:23:45");
+  const exif = ifd(exifAt, [[0x9003, 2, date.length, date], [0x829d, 5, 1, Buffer.concat([u32(28), u32(10)])]]);
+  const app1 = Buffer.concat([Buffer.from("Exif\0\0", "latin1"), Buffer.from("II*\0", "latin1"), u32(8), ifd0(exifAt), exif]);
+  const len = Buffer.alloc(2);
+  len.writeUInt16BE(app1.length + 2);
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), len, app1, Buffer.from([0xff, 0xd9])]);
+}
+
 export async function upload(request: APIRequestContext, name: string, type: string, data: Buffer): Promise<string> {
   const res = await request.post(`/api/memos/attachments?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`, { headers: auth, data });
   if (!res.ok()) throw new Error(`upload ${res.status()}`);

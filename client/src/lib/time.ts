@@ -25,6 +25,8 @@ const formats: Record<string, Intl.DateTimeFormat> = {
   date: new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", year: "numeric" }),
   "month-short": new Intl.DateTimeFormat(lang, { month: "short", year: "numeric" }),
   day: new Intl.DateTimeFormat(lang, { weekday: "long", month: "long", day: "numeric" }),
+  datetime: new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }),
+  civil: new Intl.DateTimeFormat(lang, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "UTC" }),
 };
 
 /** Formats the `<time>` elements the server wrote in English. */

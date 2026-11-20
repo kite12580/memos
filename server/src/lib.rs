@@ -10,6 +10,7 @@ pub mod files;
 pub mod h;
 pub mod http;
 pub mod i18n;
+pub mod media;
 pub mod pages;
 pub mod profile;
 pub mod query;
