@@ -16,6 +16,7 @@ import { MEMO_MARKDOWN } from "../memos/memo-ast";
 import { renderHTML } from "./render";
 import { ready, t } from "./strings";
 import { type Uploaded, uploadFile } from "./upload";
+import { wireExtras } from "./extras";
 
 declare const RENDER_VERSION: string;
 
@@ -67,6 +68,7 @@ export class Session {
   uid?: string;
   rev?: number;
   saving = false;
+  renders = 0;
   hosted?: () => void;
 
   constructor(readonly el: HTMLElement, readonly onDone: (html: string, saved: Saved) => void, readonly onCancel?: () => void) {}
@@ -113,7 +115,8 @@ export class Session {
     });
     element.classList.add("memo-editor-root");
     this.el.dataset.ready = "1";
-    this.renderExtras();
+    wireExtras(this);
+    void this.renderExtras();
     this.changed();
   }
 
@@ -151,51 +154,23 @@ export class Session {
     }
   }
 
-  /** The attachment gallery and file and link rows under the text, each with a remove button. */
-  renderExtras() {
-    const box = this.extras;
-    const visuals = this.attachments.filter((a) => a.kind === "image" || a.kind === "video");
-    const files = this.attachments.filter((a) => a.kind !== "image" && a.kind !== "video");
-    const remove = (kind: string, uid: string) =>
-      `<button type="button" data-remove="${kind}:${uid}" aria-label="${t("common.delete")}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-xs mu-focus">${icon("x", "")}</button>`;
-    const n = visuals.length;
-    const grid = n <= 1 ? "grid-cols-1" : n === 2 ? "grid-cols-2" : n <= 4 ? "grid-cols-2 grid-rows-2" : "grid-cols-3 grid-rows-2";
-    let html = "";
-    if (n) {
-      html += `<div class="w-full grid ${grid} gap-1.5 h-40">${visuals
-        .map(
-          (a, i) =>
-            `<div class="relative overflow-hidden rounded-mu-md border border-mu-line/70 bg-mu-well/30 ${n === 3 && i === 0 ? "row-span-2" : ""}">${a.thumb ? `<img src="${a.thumb}" alt="" class="h-full w-full object-cover">` : `<div class="flex h-full items-center justify-center mu-caption text-mu-text-secondary">${a.filename}</div>`}<div class="absolute end-1 top-1 rounded-mu-sm bg-mu-canvas/80">${remove("a", a.uid)}</div></div>`,
-        )
-        .join("")}</div>`;
-    }
-    if (files.length || this.relations.length) {
-      html += `<div class="-mx-2 flex w-[calc(100%+1rem)] flex-col gap-0.5">${files
-        .map(
-          (a) =>
-            `<div class="group/row relative flex h-7 w-full min-w-0 items-center gap-1 rounded-mu-md px-2 mu-caption text-mu-text-secondary"><span class="flex size-5 shrink-0 items-center justify-center">${icon(a.kind === "audio" ? "audio-lines" : "file", "mu-icon-sm")}</span><span class="min-w-0 flex-1 truncate text-mu-text"></span>${remove("a", a.uid)}</div>`,
-        )
-        .join("")}${this.relations
-        .map(
-          (r) =>
-            `<div class="group/row relative flex h-7 w-full min-w-0 items-center gap-1 rounded-mu-md px-2 mu-caption text-mu-text-secondary"><span class="flex size-5 shrink-0 items-center justify-center">${icon("link", "mu-icon-sm")}</span><span class="min-w-0 flex-1 truncate"></span>${remove("r", r.uid)}</div>`,
-        )
-        .join("")}</div>`;
-    }
-    box.innerHTML = html;
-    const names = $$(".truncate", box);
-    [...files.map((a) => a.filename), ...this.relations.map((r) => r.snippet)].forEach((text, i) => {
-      if (names[i]) names[i].textContent = text;
-    });
-    box.onclick = (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-remove]");
-      if (!b) return;
-      const [kind, uid] = b.dataset.remove!.split(":");
-      if (kind === "a") this.attachments = this.attachments.filter((a) => a.uid !== uid);
-      else this.relations = this.relations.filter((r) => r.uid !== uid);
-      this.renderExtras();
-      this.changed();
-    };
+  async renderExtras() {
+    const id = ++this.renders;
+    const ids = (list: { uid: string }[]) => list.map((x) => x.uid).join(",");
+    const query = new URLSearchParams({ memo: this.uid ?? "", a: ids(this.attachments), r: ids(this.relations) });
+    const res = await request(`/f/extras?${query}`).catch(toastError);
+    if (!res) return;
+    const html = await res.text();
+    if (id !== this.renders) return;
+    this.extras.innerHTML = html;
+    formatTimes(this.extras);
+  }
+
+  insertImages(list: Uploaded[]) {
+    const { editor } = this;
+    if (list.length) editor.commands.insertMarkdown(list.map((a) => `![${imageAlt(a.filename)}](${a.url})`).join("\n\n"), { at: editor.getSelection().focus, block: true });
+    editor.commands.focus();
+    editor.commands.scrollIntoView();
   }
 
   async save() {
@@ -547,21 +522,15 @@ export async function openInsertMenu(trigger: HTMLElement) {
       case "attachment":
         return session.addFiles(await pickFiles(""));
       case "image": {
-        const files = await pickFiles("image/*");
-        const done: string[] = [];
-        for (const file of files) {
+        const done: Uploaded[] = [];
+        for (const file of await pickFiles("image/*")) {
           try {
-            const a = await uploadFile(file);
-            done.push(`![${imageAlt(a.filename)}](${a.url})`);
+            done.push(await uploadFile(file));
           } catch (err) {
             toastError(err);
           }
         }
-        const { editor } = session;
-        if (done.length) editor.commands.insertMarkdown(done.join("\n\n"), { at: editor.getSelection().focus, block: true });
-        editor.commands.focus();
-        editor.commands.scrollIntoView();
-        return;
+        return session.insertImages(done);
       }
       case "draw":
         return import("./draw").then((m) => m.openDrawing(session, t));
