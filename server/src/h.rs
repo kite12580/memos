@@ -52,10 +52,21 @@ pub fn icon(name: &str, class: &str) -> Html {
     Html(s)
 }
 
-/// The account avatar, which has no picture in a single-user app.
-pub fn avatar(size: &str) -> Html {
+/// memos' UserAvatar: the picture, or a portrait tinted by the name.
+pub fn avatar(size: &str, src: Option<&str>, name: &str) -> Html {
+    if let Some(src) = src {
+        return Html(format!(
+            r#"<div class="flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-mu-line {size}" aria-hidden="true"><img class="size-full object-cover" src="{}" decoding="async" loading="lazy" alt=""></div>"#,
+            escape(src)
+        ));
+    }
+    let mut hash: i32 = 0;
+    for c in name.trim().to_lowercase().chars() {
+        hash = hash.wrapping_mul(31).wrapping_add(c as i32);
+    }
+    let hue = if name.trim().is_empty() { 330 } else { (hash as u32 % 12) * 30 };
     Html(format!(
-        r##"<div class="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.82_0.09_var(--avatar-hue))] text-[oklch(0.5_0.1_var(--avatar-hue))] [[data-theme=dark]_&amp;]:bg-[oklch(0.42_0.09_var(--avatar-hue))] [[data-theme=dark]_&amp;]:text-[oklch(0.85_0.06_var(--avatar-hue))] {size}" aria-hidden="true" style="--avatar-hue: 330deg;"><svg class="lucide lucide-user-round size-full translate-y-[12.5%] [&amp;_circle]:-translate-y-px [&amp;_path]:origin-center [&amp;_path]:scale-x-110" width="24" height="24" fill="currentColor" stroke="currentColor" stroke-width="0" aria-hidden="true"><use href="{}#i-user-round"/></svg></div>"##,
+        r##"<div class="flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.82_0.09_var(--avatar-hue))] text-[oklch(0.5_0.1_var(--avatar-hue))] [[data-theme=dark]_&amp;]:bg-[oklch(0.42_0.09_var(--avatar-hue))] [[data-theme=dark]_&amp;]:text-[oklch(0.85_0.06_var(--avatar-hue))] {size}" aria-hidden="true" style="--avatar-hue: {hue}deg;"><svg class="lucide lucide-user-round size-full translate-y-[12.5%] [&amp;_circle]:-translate-y-px [&amp;_path]:origin-center [&amp;_path]:scale-x-110" width="24" height="24" fill="currentColor" stroke="currentColor" stroke-width="0" aria-hidden="true"><use href="{}#i-user-round"/></svg></div>"##,
         sprite()
     ))
 }
@@ -111,6 +122,13 @@ mod tests {
         assert_eq!(human_size(1536), "1.5 KB");
         assert_eq!(human_size(5 * 1024 * 1024), "5.0 MB");
         assert_eq!(human_size(50 * 1024 * 1024), "50 MB");
+    }
+
+    #[test]
+    fn avatar_hue_follows_memos() {
+        assert!(avatar("", None, "").0.contains("--avatar-hue: 330deg"));
+        assert!(avatar("", None, "a").0.contains("--avatar-hue: 30deg"));
+        assert!(avatar("", Some("/avatar?v=1"), "a").0.contains(r#"src="/avatar?v=1""#));
     }
 
     #[test]

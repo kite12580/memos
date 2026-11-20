@@ -266,7 +266,7 @@ pub async fn attachments(app: &Arc<App>, req: &Request) -> Response {
         Err(e) => return e.into(),
     };
     let p = AttachmentsPage {
-        title: format!("{} · Memos", c.t.s("common.attachments")),
+        title: c.page_title(c.t.s("common.attachments")),
         sb: sidebar(&c, tab, counts),
         lib: library(&c, tab, rows, limit),
         tab,

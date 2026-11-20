@@ -24,12 +24,14 @@ const formats: Record<string, Intl.DateTimeFormat> = {
   short: new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" }),
   date: new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", year: "numeric" }),
   "month-short": new Intl.DateTimeFormat(lang, { month: "short", year: "numeric" }),
+  day: new Intl.DateTimeFormat(lang, { weekday: "long", month: "long", day: "numeric" }),
 };
 
 /** Formats the `<time>` elements the server wrote in English. */
 export function formatTimes(root: ParentNode = document) {
   for (const el of $$<HTMLTimeElement>("time[data-rel], time[data-fmt]", root)) {
-    const date = new Date(el.dateTime.length === 7 ? `${el.dateTime}-01T00:00:00` : el.dateTime);
+    const dt = el.dateTime;
+    const date = new Date(dt.length === 7 ? `${dt}-01T00:00:00` : dt.length === 10 ? `${dt}T00:00:00` : dt);
     if (Number.isNaN(date.getTime())) continue;
     const fmt = el.dataset.fmt;
     const text = fmt && formats[fmt] ? formats[fmt].format(date) : relative(date);

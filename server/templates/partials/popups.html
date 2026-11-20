@@ -27,7 +27,8 @@
 <button type="button" aria-haspopup="menu" aria-expanded="false" data-submenu="tpl-lang-menu" class="mu-menu-trigger mu-menu-item mu-s-sm mu-caption transition-colors hover:bg-mu-hover aria-[current=page]:bg-mu-hover border border-transparent mu-focus focus-visible:border-mu-focus w-full"><span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">{{ h::icon("globe", "mu-icon text-mu-text-secondary") }}</span><span class="shrink-0">{{ c.t.s("common.language") }}</span><span class="min-w-0 flex-1 truncate text-end text-mu-text-secondary">{{ c.t.name() }}</span>{{ h::icon("chevron-right", "mu-icon text-mu-text-secondary rtl:rotate-180") }}</button>
 </section>
 <div role="separator" class="mu-menu-separator"></div>
-<section>
+<section aria-label="{{ c.t.s("setting.sso.account") }}">
+<div class="mu-s-sm flex h-(--mu-row-height) items-center gap-2 border border-transparent px-(--mu-row-padding)"><span class="flex size-5 shrink-0 items-center justify-center relative">{{ c.avatar("size-5") }}</span><span class="min-w-0 flex-1 truncate mu-label">{{ c.account_label() }}</span></div>
 <a href="{{ c.base }}/archived" class="mu-menu-item mu-s-sm mu-caption transition-colors hover:bg-mu-hover border border-transparent mu-focus focus-visible:border-mu-focus"><span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">{{ h::icon("archive", "mu-icon text-mu-text-secondary") }}</span><span class="min-w-0 flex-1 truncate">{{ c.t.s("common.archived") }}</span></a>
 <a href="{{ c.base }}/settings" class="mu-menu-item mu-s-sm mu-caption transition-colors hover:bg-mu-hover border border-transparent mu-focus focus-visible:border-mu-focus"><span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">{{ h::icon("settings", "mu-icon text-mu-text-secondary") }}</span><span class="min-w-0 flex-1 truncate">{{ c.t.s("common.settings") }}</span></a>
 </section>

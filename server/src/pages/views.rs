@@ -154,7 +154,7 @@ pub async fn views(app: &Arc<App>, req: &Request) -> Response {
         ..Default::default()
     };
     let p = ViewsPage {
-        title: format!("{} · Memos", c.t.s("common.views")),
+        title: c.page_title(c.t.s("common.views")),
         views: views
             .into_iter()
             .map(|w| ViewItem {

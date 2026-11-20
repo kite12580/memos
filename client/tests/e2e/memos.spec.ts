@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { memo } from "./pages-helpers";
 
 const auth = { headers: { authorization: "Bearer e2e-token" } };
 
@@ -53,4 +54,16 @@ test("pins, archives and deletes from the menu", async ({ page, request }) => {
 test("refuses writes from other sites", async ({ request }) => {
   const res = await request.post("/memos", { headers: { "sec-fetch-site": "cross-site" }, data: { content: "x" } });
   expect(res.status()).toBe(403);
+});
+
+test("shows the pointer over menu items and emoji", async ({ page, request }) => {
+  await memo(request, "Pointer memo");
+  await page.goto("/");
+  const card = page.locator("article", { hasText: "Pointer memo" });
+  await card.locator("[data-popup=memo-menu]").click();
+  await expect(page.getByRole("menuitem").first()).toHaveCSS("cursor", "pointer");
+  await page.keyboard.press("Escape");
+  await card.hover();
+  await card.locator("[data-popup=reactions]").first().click();
+  await expect(page.locator(".mu-combobox-item").first()).toHaveCSS("cursor", "pointer");
 });

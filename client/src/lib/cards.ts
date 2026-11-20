@@ -53,6 +53,12 @@ export async function refreshChrome() {
     aside.replaceChildren(...nextAside.childNodes);
     formatTimes(aside);
   }
+  const grid = doc.querySelector("[data-cells]");
+  const cells = $("[data-cells]");
+  if (grid && cells) {
+    cells.replaceChildren(...grid.childNodes);
+    document.dispatchEvent(new CustomEvent("memos:calendar"));
+  }
   const head = doc.querySelector("[data-comments-head]");
   if (head) $("[data-comments-head]")?.replaceWith(head);
   const empty = doc.querySelector("#memo-list [data-empty]");
@@ -69,7 +75,7 @@ export async function archive(card: HTMLElement, on: boolean) {
   try {
     await post(`/memos/${uid}/archive`, { on });
     const done = on ? strings.archived : strings.restored;
-    if (card.closest("#memo-list")) {
+    if (card.closest("#memo-list, [data-day-cards]")) {
       removeCard(card);
       toast(done);
     } else {
@@ -91,7 +97,7 @@ export function confirmDelete(card: HTMLElement) {
       try {
         await post(`/memos/${card.dataset.card}/delete`);
         toast(strings.deleted);
-        if (card.closest("#memo-list, [data-comments]")) removeCard(card);
+        if (card.closest("#memo-list, [data-comments], [data-day-cards]")) removeCard(card);
         else location.href = `${document.body.dataset.base}/`;
       } catch (e) {
         toastError(e);

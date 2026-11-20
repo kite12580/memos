@@ -1,9 +1,9 @@
-// The settings page: the language picker and the tag rules editor. Section
+// The settings page: the language picker, the account and server dialogs and the tag rules editor. Section
 // switching runs inline in the page so the right section shows at once.
 
 import { $, $$, fromTemplate, post } from "../lib/dom";
 import { icon } from "../lib/icon";
-import { closeAll, openPopup } from "../lib/popup";
+import { closeAll, openDialog, openPopup } from "../lib/popup";
 import { toastError } from "../lib/toast";
 
 const root = $("[data-page=settings]")!;
@@ -234,6 +234,116 @@ function initTags() {
   });
 }
 
+function setFieldError(field: HTMLElement, message?: string) {
+  field.toggleAttribute("data-invalid", !!message);
+  $("[data-field-error]", field)?.remove();
+  if (!message) return;
+  const error = document.createElement("div");
+  error.className = "mu-field-error mu-caption";
+  error.dataset.fieldError = "";
+  error.textContent = message;
+  field.append(error);
+}
+
+async function saveProfile(button: HTMLButtonElement, body: Record<string, string>) {
+  button.disabled = true;
+  button.setAttribute("data-disabled", "");
+  try {
+    await post("/profile", body);
+    sessionStorage.setItem("toast", $("[data-tags]", root)!.dataset.saved!);
+    location.reload();
+  } catch (e) {
+    toastError(e);
+    button.disabled = false;
+    button.removeAttribute("data-disabled");
+  }
+}
+
+const MAX_AVATAR = 2 * 1024 * 1024;
+const AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+/** The picked image as a data URL, re-encoded as PNG when the server would not take its type. */
+async function avatarURL(file: File): Promise<string> {
+  let blob: Blob = file;
+  if (!AVATAR_TYPES.includes(file.type)) {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+    blob = await new Promise<Blob>((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error())), "image/png"));
+  }
+  if (blob.size > MAX_AVATAR) throw new RangeError();
+  return new Promise((ok, fail) => {
+    const reader = new FileReader();
+    reader.onload = () => ok(reader.result as string);
+    reader.onerror = () => fail(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function editAccount(dialog: HTMLElement) {
+  const field = $("[data-avatar-field]", dialog)!;
+  const label = $("label", field)!;
+  const file = $<HTMLInputElement>("input[type=file]", field)!;
+  const clear = $<HTMLButtonElement>("[data-clear-avatar]", field)!;
+  const blank = $<HTMLTemplateElement>("template[data-blank-avatar]", field)!;
+  let avatar: string | undefined;
+  const show = (src: string) => {
+    const picture = src ? document.createElement("div") : (blank.content.firstElementChild!.cloneNode(true) as HTMLElement);
+    if (src) {
+      picture.className = "flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-mu-line w-10 h-10";
+      picture.innerHTML = '<img class="size-full object-cover" alt="">';
+      picture.querySelector("img")!.src = src;
+    }
+    label.firstElementChild!.replaceWith(picture);
+    clear.hidden = !src;
+  };
+  file.addEventListener("change", async () => {
+    const picked = file.files?.[0];
+    file.value = "";
+    if (!picked) return;
+    if (picked.size > MAX_AVATAR) return setFieldError(field, field.dataset.tooLarge);
+    try {
+      avatar = await avatarURL(picked);
+      setFieldError(field);
+      show(avatar);
+    } catch (e) {
+      setFieldError(field, e instanceof RangeError ? field.dataset.tooLarge : field.dataset.unreadable);
+    }
+  });
+  clear.addEventListener("click", () => {
+    avatar = "";
+    setFieldError(field);
+    show("");
+  });
+  const nickname = $<HTMLInputElement>("input[name=nickname]", dialog)!;
+  $<HTMLButtonElement>("[data-save]", dialog)!.addEventListener("click", (e) =>
+    saveProfile(e.currentTarget as HTMLButtonElement, { nickname: nickname.value, ...(avatar === undefined ? {} : { avatar }) }),
+  );
+}
+
+function customizeServer(dialog: HTMLElement) {
+  const input = (name: string) => $<HTMLInputElement | HTMLTextAreaElement>(`[name=${name}]`, dialog)!;
+  const title = input("title");
+  title.addEventListener("input", () => setFieldError($("[data-title-field]", dialog)!));
+  $("[data-restore]", dialog)!.addEventListener("click", () => {
+    title.value = "Memos";
+    input("logo").value = "";
+    input("description").value = "";
+  });
+  $<HTMLButtonElement>("[data-save]", dialog)!.addEventListener("click", (e) => {
+    if (!title.value.trim()) return setFieldError($("[data-title-field]", dialog)!, "Title cannot be empty.");
+    void saveProfile(e.currentTarget as HTMLButtonElement, {
+      title: title.value,
+      logo: input("logo").value,
+      description: input("description").value,
+    });
+  });
+}
+
 initLanguage();
 initTags();
+$("[data-edit-account]", root)!.addEventListener("click", () => openDialog("tpl-account", editAccount));
+$("[data-edit-profile]", root)!.addEventListener("click", () => openDialog("tpl-customize", customizeServer));
 $("[data-refresh]", root)?.addEventListener("click", () => location.reload());

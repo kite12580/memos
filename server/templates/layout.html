@@ -8,8 +8,15 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f0f0f">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+{%- if c.profile.logo.is_empty() %}
 <link rel="icon" type="image/svg+xml" href="{{ c.base }}/favicon.svg">
-<title>{% block title %}Memos{% endblock %}</title>
+{%- else %}
+<link rel="icon" href="{{ c.profile.logo }}">
+{%- endif %}
+{%- if !c.profile.description.is_empty() %}
+<meta name="description" content="{{ c.profile.description }}">
+{%- endif %}
+<title>{% block title %}{{ c.title() }}{% endblock %}</title>
 {%- if c.system_theme %}
 <script>matchMedia("(prefers-color-scheme: dark)").matches&&document.documentElement.setAttribute("data-theme","dark")</script>
 {%- endif %}
@@ -30,7 +37,7 @@
 <main class="flex w-full min-w-0 flex-col items-center md:ps-(--app-sidebar-width) min-h-full">
 <header class="sticky top-0 z-20 flex h-12 w-full shrink-0 items-center justify-start gap-1 border-b border-mu-line/70 bg-mu-canvas/90 px-2 backdrop-blur-md md:hidden">
 <button type="button" aria-label="{{ c.t.s("common.open-navigation") }}" data-action="drawer" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-md mu-focus">{{ h::icon("menu", "") }}</button>
-<button type="button" aria-haspopup="dialog" aria-expanded="false" data-popup="brand" title="Memos" class="mu-popover-trigger memos-brand-trigger text-start transition-colors hover:bg-mu-hover/65 border border-transparent mu-focus focus-visible:border-mu-focus min-w-0 items-center flex h-9 gap-1.5 rounded-mu-md px-1 max-w-[12rem]"><div class="memos-logo w-fit min-w-0 max-w-full"><span class="flex min-w-0 items-center text-mu-text gap-2">{{ h::mark(18, 28) }}<span class="min-w-0 truncate text-lg font-serif font-semibold leading-[1.25] tracking-[-0.015em]">Memos</span></span></div>{{ h::icon("chevrons-up-down", "mu-icon-sm shrink-0 text-mu-text-secondary/70") }}</button>
+<button type="button" aria-haspopup="dialog" aria-expanded="false" data-popup="brand" title="{{ c.title() }}" class="mu-popover-trigger memos-brand-trigger text-start transition-colors hover:bg-mu-hover/65 border border-transparent mu-focus focus-visible:border-mu-focus min-w-0 items-center flex h-9 gap-1.5 rounded-mu-md px-1 max-w-[12rem]"><div class="memos-logo w-fit min-w-0 max-w-full"><span class="flex min-w-0 items-center text-mu-text gap-2">{{ c.logo(28) }}<span class="min-w-0 truncate text-lg font-serif font-semibold leading-[1.25] tracking-[-0.015em]">{{ c.title() }}</span></span></div>{{ h::icon("chevrons-up-down", "mu-icon-sm shrink-0 text-mu-text-secondary/70") }}</button>
 </header>
 {% block main %}{% endblock %}
 </main>

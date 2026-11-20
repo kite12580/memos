@@ -363,6 +363,47 @@ pub async fn tag_meta(app: &Arc<App>, req: &Request) -> Response {
     }
 }
 
+/// Saves the fields the body names, leaving the rest of the profile as it is.
+pub async fn profile(app: &Arc<App>, req: &Request) -> Response {
+    let b = body(req);
+    let mut p = (*app.profile()).clone();
+    let field = |k: &str, max: usize| b[k].as_str().map(|v| v.trim().to_string()).filter(|v| v.chars().count() <= max);
+    for (key, max, slot) in [
+        ("title", 64, &mut p.title),
+        ("description", 1000, &mut p.description),
+        ("nickname", 64, &mut p.nickname),
+    ] {
+        if !b[key].is_null() {
+            match field(key, max) {
+                Some(v) => *slot = v,
+                None => return Response::error(400, &format!("{key} is too long")),
+            }
+        }
+    }
+    if !b["logo"].is_null() {
+        match b["logo"].as_str().map(str::trim).filter(|l| crate::profile::valid_logo(l)) {
+            Some(l) => p.logo = l.to_string(),
+            None => return Response::error(400, "logo must be an http(s) or image URL"),
+        }
+    }
+    if let Some(a) = b["avatar"].as_str() {
+        p.avatar = a.to_string();
+    }
+    let p = p.decoded();
+    if !p.avatar.is_empty() && p.avatar_file.is_none() {
+        return Response::error(400, "avatar must be a PNG, JPEG, WebP or GIF of 2 MB or less");
+    }
+    let saved = p.clone();
+    match app.db.tx(move |c| saved.save(c)).await {
+        Ok(()) => {
+            app.set_profile(p);
+            app.changed();
+            Response::new(204)
+        }
+        Err(e) => e.into(),
+    }
+}
+
 const PREF_KEYS: [&str; 10] = ["theme", "lang", "layout", "order", "dir", "compact", "wide", "tags", "sw", "tz"];
 
 /// Stores a display preference in a year-long cookie.

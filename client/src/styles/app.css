@@ -58,6 +58,11 @@
     }
   }
 
+  .mu-menu-item:not([data-disabled]),
+  .mu-combobox-item {
+    cursor: pointer;
+  }
+
   /* Highlighted code saves both schemes' colors as variables (editor/render.ts). */
   .memos-code-token {
     color: var(--hl);

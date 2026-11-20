@@ -6,7 +6,7 @@ mod settings;
 mod views;
 
 pub use attachments::{attachments, attachments_fragment};
-pub use calendar::calendar;
+pub use calendar::{calendar, day_fragment};
 pub use settings::settings;
 pub use views::views;
 
@@ -225,6 +225,14 @@ pub fn month_start_of(c: &Ctx, terms: &[Term]) -> jiff::civil::Date {
     v::month_start(today.year(), today.month())
 }
 
+/// The day an `on:` search narrows to, which the sidebar calendar marks.
+pub fn selected_day(terms: &[Term]) -> Option<&str> {
+    terms.iter().find_map(|t| match &t.atom {
+        Atom::On(d) if !t.neg && d.len() == 10 => Some(d.as_str()),
+        _ => None,
+    })
+}
+
 pub fn view_rows(views: &[crate::db::views::View]) -> Vec<ViewRow> {
     views
         .iter()
@@ -307,13 +315,13 @@ pub fn active_tag(terms: &[Term]) -> Option<String> {
     }
 }
 
-pub fn collection_sidebar(c: &Ctx, data: &Collection, active: &'static str, stats: Option<jiff::civil::Date>, active_tag: Option<&str>) -> Sidebar {
+pub fn collection_sidebar(c: &Ctx, data: &Collection, active: &'static str, stats: Option<jiff::civil::Date>, terms: &[Term]) -> Sidebar {
     Sidebar {
         active,
-        stats: stats.map(|start| v::month_view(&c.t, c.base, start, &data.month, &c.prefs.tz, c.now)),
+        stats: stats.map(|start| v::month_view(&c.t, c.base, start, &data.month, &c.prefs.tz, c.now, selected_day(terms))),
         views: Some(view_rows(&data.views)),
         active_view: data.view.as_ref().map(|w| w.id),
-        tags: Some(v::tag_rows(c.base, &data.tags, c.prefs.tag_tree, active_tag)),
+        tags: Some(v::tag_rows(c.base, &data.tags, c.prefs.tag_tree, active_tag(terms).as_deref())),
         ..Default::default()
     }
 }
@@ -372,8 +380,7 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
         if scope == Scope::Archived { "archived" } else { "home" },
         view_q.strip_prefix('?').map(|s| format!("&{s}")).unwrap_or_default()
     );
-    let tag = active_tag(&terms);
-    let sb = collection_sidebar(&c, &data, if scope == Scope::Home { "timeline" } else { "" }, Some(month), tag.as_deref());
+    let sb = collection_sidebar(&c, &data, if scope == Scope::Home { "timeline" } else { "" }, Some(month), &terms);
     let filters = chips(&c, &path, data.view.as_ref(), &terms);
     let list = ListView {
         cards: cards(&c, &data.memos, &data.extras, true),
@@ -381,7 +388,7 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
     };
     let composer = (scope == Scope::Home).then(|| Composer::new(&c));
     let heading = if scope == Scope::Archived { c.t.s("common.archived").to_string() } else { String::new() };
-    let title = if heading.is_empty() { "Memos".to_string() } else { format!("{heading} · Memos") };
+    let title = if heading.is_empty() { c.title().to_string() } else { c.page_title(&heading) };
     let p = HomePage {
         sb,
         title,
@@ -445,12 +452,14 @@ pub async fn month_fragment(app: &Arc<App>, req: &Request) -> Response {
             Some(v::month_start(y.parse().ok()?, mo.parse().ok()?))
         })
         .unwrap_or_else(|| month_start_of(&c, &[]));
+    let q = req.query("q").unwrap_or_default();
+    let terms = query::parse(&q);
     let (from, to) = v::month_range(month, &c.prefs.tz);
     let created = match app.db.with(move |conn| memos::created_between(conn, from, to)).await {
         Ok(v) => v,
         Err(e) => return e.into(),
     };
-    let month = v::month_view(&c.t, c.base, month, &created, &c.prefs.tz, c.now);
+    let month = v::month_view(&c.t, c.base, month, &created, &c.prefs.tz, c.now, selected_day(&terms));
     html(&MonthFragment { c, month })
 }
 
@@ -580,10 +589,7 @@ pub async fn memo(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     };
     let mut cards = cards(&c, &all, &extras, false);
     let card = cards.remove(0);
-    let title = format!(
-        "{} · Memos",
-        all[0].snippet.chars().take(60).collect::<String>().trim()
-    );
+    let title = c.page_title(all[0].snippet.chars().take(60).collect::<String>().trim());
     cards.reverse();
     let sb = Sidebar {
         active: "memo",

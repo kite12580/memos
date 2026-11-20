@@ -78,7 +78,7 @@ test("opens an image preview from the keyboard and closes it with Escape", async
 });
 
 test("switches toggle from the keyboard", async ({ page }) => {
-  await page.goto("/settings");
+  await page.goto("/settings#preference");
   await page.getByRole("switch", { name: "Compact mode" }).focus();
   await page.keyboard.press("Space");
   await expect(page.getByRole("switch", { name: "Compact mode" })).toHaveAttribute("aria-checked", "true");
@@ -86,7 +86,7 @@ test("switches toggle from the keyboard", async ({ page }) => {
 
 test("compact mode folds a long memo on every load", async ({ page, request }) => {
   await memo(request, `foldme ${"long words ".repeat(400)}`);
-  await page.goto("/settings");
+  await page.goto("/settings#preference");
   await page.getByRole("switch", { name: "Compact mode" }).click();
   await expect(page.getByRole("switch", { name: "Compact mode" })).toHaveAttribute("aria-checked", "true");
   for (let i = 0; i < 3; i++) {
@@ -142,7 +142,7 @@ test("links a memo from the keyboard", async ({ page, request }) => {
 
 test("the grid keeps every card and the composer when a memo is added or deleted", async ({ page, request }) => {
   for (let i = 0; i < 6; i++) await memo(request, `grid card ${i}`);
-  await page.goto("/settings");
+  await page.goto("/settings#preference");
   await page.locator("[data-select=layout]").click();
   await page.getByRole("option", { name: "2" }).click();
   await expect(page.locator("[data-select=layout]")).toHaveText("2 columns");

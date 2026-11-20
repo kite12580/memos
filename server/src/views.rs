@@ -161,11 +161,43 @@ pub struct Ctx<'a> {
     pub q: String,
     pub now: i64,
     pub tags: std::sync::Arc<TagStyles>,
+    pub profile: std::sync::Arc<crate::profile::Profile>,
 }
 
 pub const SEARCH_HINTS: [&str; 9] = ["#", "is:pinned", "has:task", "has:todo", "has:link", "has:code", "has:image", "after:", "before:"];
 
 impl Ctx<'_> {
+    pub fn title(&self) -> &str {
+        self.profile.title()
+    }
+
+    /// `"{page} · {title}"`, the tab title of a page other than Home.
+    pub fn page_title(&self, page: &str) -> String {
+        format!("{page} · {}", self.title())
+    }
+
+    pub fn avatar(&self, size: &str) -> h::Html {
+        let src = self.profile.avatar_file.as_ref().map(|a| format!("{}/avatar?v={}", self.base, a.rev));
+        h::avatar(size, src.as_deref(), &self.profile.nickname)
+    }
+
+    /// The account's name where memos shows the user's display name.
+    pub fn account_label(&self) -> &str {
+        if self.profile.nickname.is_empty() { self.t.s("common.profile") } else { &self.profile.nickname }
+    }
+
+    /// The brand mark at `size` pixels: the custom icon, or the memos bird.
+    pub fn logo(&self, size: u32) -> h::Html {
+        if self.profile.logo.is_empty() {
+            h::mark((size * 288).div_ceil(448), size)
+        } else {
+            h::Html(format!(
+                r#"<img src="{}" width="{size}" height="{size}" style="width: {size}px; height: {size}px;" class="shrink-0 select-none object-contain" alt="" draggable="false" decoding="async">"#,
+                h::escape(&self.profile.logo)
+            ))
+        }
+    }
+
     pub fn nav_links(&self) -> [(&'static str, &'static str, &'static str, &'static str); 2] {
         [
             ("calendar", "calendar-days", self.t.s("common.calendar"), "/calendar"),
@@ -394,6 +426,7 @@ pub struct DayCell {
     pub href: String,
     pub label: String,
     pub today: bool,
+    pub selected: bool,
     pub fill: &'static str,
 }
 
@@ -436,7 +469,7 @@ pub fn today(now: i64, tz: &TimeZone) -> Date {
         .unwrap_or(Date::constant(2000, 1, 1))
 }
 
-pub fn month_view(t: &T, base: &str, start: Date, created: &[i64], tz: &TimeZone, now: i64) -> MonthView {
+pub fn month_view(t: &T, base: &str, start: Date, created: &[i64], tz: &TimeZone, now: i64, selected: Option<&str>) -> MonthView {
     let mut counts: HashMap<i8, usize> = HashMap::new();
     for ts in created {
         if let Ok(t) = Timestamp::from_second(*ts) {
@@ -458,6 +491,7 @@ pub fn month_view(t: &T, base: &str, start: Date, created: &[i64], tz: &TimeZone
             let in_month = d.month() == start.month();
             let count = if in_month { counts.get(&d.day()).copied().unwrap_or(0) } else { 0 };
             let key = d.strftime("%Y-%m-%d").to_string();
+            let picked = in_month && selected == Some(key.as_str());
             DayCell {
                 in_month,
                 day: d.day(),
@@ -476,7 +510,9 @@ pub fn month_view(t: &T, base: &str, start: Date, created: &[i64], tz: &TimeZone
                     .to_lowercase()
                 },
                 today: d == today,
+                selected: picked,
                 fill: match level(count, max) {
+                    _ if picked => "z-10 bg-mu-primary text-mu-on-primary",
                     0 => "bg-transparent text-mu-text/75 group-hover/day:bg-mu-well/40",
                     1 => "bg-mu-primary/12 text-mu-text/75",
                     2 => "bg-mu-primary/22 text-mu-text/80",
@@ -890,11 +926,13 @@ mod tests {
     #[test]
     fn calendar() {
         let t = T::english();
-        let m = month_view(&t, "", Date::constant(2026, 11, 1), &[1_763_576_986 + 365 * 86400], &TimeZone::UTC, 1_795_112_986);
+        let m = month_view(&t, "", Date::constant(2026, 11, 1), &[1_763_576_986 + 365 * 86400], &TimeZone::UTC, 1_795_112_986, Some("2026-11-03"));
         assert_eq!(m.title, "November 2026");
         assert_eq!(m.days.len(), 35);
         assert_eq!(m.days[0].day, 1);
         assert_eq!(m.weekdays[0], "S");
         assert!(m.days.iter().any(|d| d.today));
+        let picked: Vec<_> = m.days.iter().filter(|d| d.selected).map(|d| d.day).collect();
+        assert_eq!(picked, [3]);
     }
 }

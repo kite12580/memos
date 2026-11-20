@@ -192,7 +192,7 @@ export class Session {
         ver: RENDER_VERSION,
         attachments: this.attachments.map((a) => a.uid),
         relations: this.relations.map((r) => r.uid),
-        createdTs: this.createdTs,
+        createdTs: this.createdTs ?? this.dayTs(),
         rev: this.rev,
         parent: this.el.dataset.parent,
       };
@@ -207,6 +207,16 @@ export class Session {
       this.saving = false;
       this.changed();
     }
+  }
+
+  /** For a memo composed in a calendar day's panel: that day, at the current time of day. */
+  dayTs() {
+    const day = this.el.closest<HTMLElement>("[data-day-panel]")?.dataset.dayPanel;
+    if (!day) return undefined;
+    const [y, m, d] = day.split("-").map(Number);
+    const at = new Date();
+    at.setFullYear(y, m - 1, d);
+    return Math.floor(at.getTime() / 1000);
   }
 
   /** Clears what was just saved, keeping anything written or attached while the save was in flight. */
@@ -257,6 +267,12 @@ function insertCard(html: string, composer: HTMLElement) {
     wrap.id = card.dataset.card ?? "";
     wrap.append(card);
     list?.prepend(wrap);
+  } else if (composer.dataset.composer === "day") {
+    const holder = composer.closest<HTMLElement>("[data-day-composer]")!;
+    const compose = holder.previousElementSibling as HTMLElement;
+    compose.before(card);
+    holder.hidden = true;
+    compose.hidden = false;
   } else {
     const leading = $("#memo-list [data-leading]");
     const firstUnpinned = $$("#memo-list [data-card]")

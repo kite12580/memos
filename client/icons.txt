@@ -1,4 +1,4 @@
-circle-check circle-alert pause chevron-up audio-lines
+circle-check circle-alert pause chevron-up audio-lines user-round
 mouse-pointer-2 pencil eraser square circle move-up-right type undo-2 redo-2
 funnel star bookmark briefcase book-open lightbulb heart flag inbox calendar clock list-todo code image link music camera map-pin pen-line sparkles flame leaf coffee house graduation-cap rocket target archive
 square-check message-circle milestone smile file hash

@@ -126,7 +126,8 @@ async function showMonth(month: string) {
   const section = $("#sidebar-stats");
   if (!section) return;
   try {
-    const res = await request(`/f/month?m=${month}`);
+    const q = new URLSearchParams(location.search).get("q");
+    const res = await request(`/f/month?m=${month}${q ? `&q=${encodeURIComponent(q)}` : ""}`);
     section.replaceChildren(fromHTML(await res.text()));
     formatTimes(section);
   } catch (e) {

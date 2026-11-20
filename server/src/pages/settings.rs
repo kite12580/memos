@@ -9,7 +9,13 @@ use std::sync::Arc;
 use super::attachments::file_size as size;
 
 /// The settings sections, in sidebar order: hash, icon, label key.
-const SECTIONS: [(&str, &str); 3] = [("preference", "cog"), ("tags", "tags"), ("resource-stats", "chart-column")];
+const SECTIONS: [(&str, &str); 5] = [
+    ("my-account", "user"),
+    ("preference", "cog"),
+    ("system", "settings-2"),
+    ("tags", "tags"),
+    ("resource-stats", "chart-column"),
+];
 
 pub struct TagSetting {
     pub tag: String,
@@ -131,7 +137,9 @@ fn sidebar(c: &Ctx) -> Sidebar {
                     href: format!("{}/settings#{key}", c.base),
                     icon,
                     label: match *key {
+                        "my-account" => c.t.s("setting.my-account.label"),
                         "preference" => c.t.s("setting.preference.label"),
+                        "system" => c.t.s("setting.system.label"),
                         "tags" => c.t.s("setting.tags.label"),
                         _ => c.t.s("setting.resource-stats.label"),
                     }
@@ -187,7 +195,7 @@ pub async fn settings(app: &Arc<App>, req: &Request) -> Response {
         dir_bytes: size(dir_size(&app.cfg.data_dir) as i64),
     };
     let p = SettingsPage {
-        title: format!("{} · Memos", c.t.s("common.settings")),
+        title: c.page_title(c.t.s("common.settings")),
         sb: sidebar(&c),
         tags,
         known,

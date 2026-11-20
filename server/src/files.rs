@@ -193,6 +193,18 @@ fn inline(mime: &str) -> bool {
         || mime == "text/plain"
 }
 
+/// The account avatar; its URL carries a content hash, so it caches for good.
+pub fn avatar(app: &App) -> Response {
+    match app.profile().avatar_file.clone() {
+        Some(a) => Response::new(200)
+            .with("content-type", &a.mime)
+            .with("cache-control", "private, max-age=31536000, immutable")
+            .with("x-content-type-options", "nosniff")
+            .body(a.bytes),
+        None => Response::not_found(),
+    }
+}
+
 pub async fn serve(app: &Arc<App>, req: &Request, uid: &str, thumb: bool) -> Response {
     let uid_owned = uid.to_string();
     let a = match app.db.with(move |c| atts::get(c, &uid_owned)).await {

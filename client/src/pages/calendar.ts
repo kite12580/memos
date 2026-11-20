@@ -1,10 +1,10 @@
 // The calendar page: fits each day's preview to the cell size as memos'
-// layoutForCellSize does, the month picker, arrow-key moves between days, and
-// on phones the chosen day's memos under the grid.
+// layoutForCellSize does, the month picker, arrow-key moves between days, the
+// open day's panel beside the grid, and on phones the chosen day's memos under it.
 
 import { initClamps } from "../lib/cards";
-import { $, $$, base, fromHTML, fromTemplate } from "../lib/dom";
-import { closeAll, isOpenFor, openPopup } from "../lib/popup";
+import { $, $$, base, fromHTML, fromTemplate, request } from "../lib/dom";
+import { closeAll, enter, isOpenFor, openPopup } from "../lib/popup";
 import { formatTimes } from "../lib/time";
 import { toastError } from "../lib/toast";
 
@@ -130,7 +130,7 @@ const OPEN_TODAY_HALO = "-m-[3px] inline-flex rounded-[9px] bg-mu-text/10 p-[3px
 const phone = matchMedia("(max-width: 47.98rem)");
 const lang = document.documentElement.lang || "en";
 
-function select(cell: HTMLElement) {
+function select(cell: HTMLElement | null) {
   for (const day of cells.children as HTMLCollectionOf<HTMLElement>) {
     const open = day === cell;
     const numeral = $("[data-numeral]", day)!;
@@ -147,7 +147,7 @@ function select(cell: HTMLElement) {
     } else if (!(open && today) && halo) halo.replaceWith(numeral);
     if (open) day.setAttribute("aria-current", "page");
     else day.removeAttribute("aria-current");
-    day.tabIndex = open ? 0 : -1;
+    if (cell) day.tabIndex = open ? 0 : -1;
   }
 }
 
@@ -186,11 +186,93 @@ async function showDay(cell: HTMLElement) {
   }
 }
 
+const PANEL_GAP = "xl:pe-[calc(var(--memo-panel-width)+12px)]";
+const panel = () => $<HTMLElement>("[data-day-panel]");
+const cellFor = (date: string) => $<HTMLElement>(`[data-calendar-date="${date}"]`, cells);
+let opening = "";
+
+async function openPanel(date: string, push: boolean) {
+  const cell = cellFor(date);
+  if (!cell || !date.startsWith(root.dataset.month!)) return location.assign(`${base}/calendar/${date}`);
+  if (push) history.pushState(null, "", `${base}/calendar/${date}`);
+  opening = date;
+  select(cell);
+  try {
+    const next = fromHTML(await (await request(`/f/day?d=${date}`)).text()).firstElementChild as HTMLElement;
+    if (opening !== date) return;
+    const old = panel();
+    if (old) old.replaceWith(next);
+    else {
+      root.parentElement!.after(next);
+      enter(next);
+    }
+    root.classList.add(PANEL_GAP);
+    formatTimes(next);
+    initClamps(next);
+    document.dispatchEvent(new CustomEvent("memos:cards"));
+  } catch (e) {
+    toastError(e);
+  }
+}
+
+function closePanel(push: boolean) {
+  if (push) history.pushState(null, "", `${base}/calendar/${root.dataset.month}`);
+  opening = "";
+  select(null);
+  root.classList.remove(PANEL_GAP);
+  const el = panel();
+  if (!el) return;
+  el.removeAttribute("data-day-panel");
+  el.setAttribute("data-ending-style", "");
+  setTimeout(() => el.remove(), 200);
+}
+
 cells.addEventListener("click", (e) => {
   const cell = (e.target as HTMLElement).closest<HTMLElement>("[data-calendar-date]");
-  if (!cell || !phone.matches) return;
+  if (!cell || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
   e.preventDefault();
-  void showDay(cell);
+  if (phone.matches) return void showDay(cell);
+  if (cell.dataset.calendarDate !== panel()?.dataset.dayPanel) void openPanel(cell.dataset.calendarDate!, true);
+});
+
+$("[data-today]", root)?.addEventListener("click", (e) => {
+  const today = cellFor(root.dataset.today!);
+  if (!today || phone.matches || root.dataset.month !== root.dataset.current) return;
+  e.preventDefault();
+  if (panel()?.dataset.dayPanel === root.dataset.today) closePanel(true);
+  else void openPanel(root.dataset.today!, true);
+});
+
+document.addEventListener("click", (e) => {
+  const target = e.target as HTMLElement;
+  if (target.closest("[data-close-day]")) {
+    e.preventDefault();
+    return closePanel(true);
+  }
+  const compose = target.closest<HTMLElement>("[data-day-compose]");
+  if (!compose) return;
+  const holder = compose.nextElementSibling as HTMLElement;
+  compose.hidden = true;
+  holder.hidden = false;
+  void import("../editor/index").then((m) => m.activate($("[data-composer]", holder)!));
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !e.defaultPrevented && panel() && !$(".mu-positioner, .mu-dialog-viewport")) closePanel(true);
+});
+
+addEventListener("popstate", () => {
+  const path = location.pathname.slice(base.length);
+  const day = /^\/calendar\/(\d{4}-\d{2}-\d{2})$/.exec(path)?.[1];
+  const month = day?.slice(0, 7) ?? /^\/calendar\/(\d{4}-\d{2})$/.exec(path)?.[1] ?? (path === "/calendar" ? root.dataset.current : "");
+  if (month !== root.dataset.month || phone.matches) return location.reload();
+  if (day) void openPanel(day, false);
+  else closePanel(false);
+});
+
+document.addEventListener("memos:calendar", () => {
+  last = "";
+  fit();
 });
 
 if (phone.matches) void showDay($<HTMLElement>('[tabindex="0"]', cells)!);

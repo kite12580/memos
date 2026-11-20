@@ -2,6 +2,7 @@ use crate::assets::Assets;
 use crate::config::Config;
 use crate::db::{Db, DbError};
 use crate::http::{MIN_COMPRESS_BYTES, Request, Response, accepts, decode_path, gzip_fast};
+use crate::profile::Profile;
 use crate::views::{Ctx, Prefs, TagStyles};
 use crate::{api, actions, files, i18n, pages};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,6 +17,7 @@ pub struct App {
     data_version: AtomicU64,
     tags: Mutex<Option<(u64, Arc<Vec<(String, i64)>>)>>,
     tag_styles: Mutex<Arc<TagStyles>>,
+    profile: Mutex<Arc<Profile>>,
     pub now: fn() -> i64,
 }
 
@@ -36,6 +38,7 @@ impl App {
         let mut seed = [0u8; 4];
         let _ = getrandom::fill(&mut seed);
         let meta = db.blocking(|c| crate::db::views::tag_meta(c)).unwrap_or_default();
+        let profile = db.blocking(|c| Profile::load(c)).unwrap_or_default();
         App {
             db,
             cfg,
@@ -43,6 +46,7 @@ impl App {
             data_version: AtomicU64::new(u32::from_le_bytes(seed) as u64),
             tags: Mutex::new(None),
             tag_styles: Mutex::new(Arc::new(TagStyles::new(meta))),
+            profile: Mutex::new(Arc::new(profile)),
             now: crate::http::now_secs,
         }
     }
@@ -77,6 +81,14 @@ impl App {
         *self.tag_styles.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(TagStyles::new(meta));
     }
 
+    pub fn profile(&self) -> Arc<Profile> {
+        self.profile.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    pub fn set_profile(&self, profile: Profile) {
+        *self.profile.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(profile);
+    }
+
     pub fn ctx(&self, req: &Request) -> Ctx<'_> {
         let prefs = Prefs::from_request(req, &self.cfg.tz);
         let t = i18n::T::pick(req.cookie("lang").as_deref(), req.header("accept-language"));
@@ -94,6 +106,7 @@ impl App {
             q: String::new(),
             now: (self.now)(),
             tags: self.tag_styles(),
+            profile: self.profile(),
         }
     }
 
@@ -163,6 +176,7 @@ impl App {
             (true, _, ["settings"]) => pages::settings(self, &req).await,
             (true, _, ["f", "memos"]) => pages::list_fragment(self, &req).await,
             (true, _, ["f", "month"]) => pages::month_fragment(self, &req).await,
+            (true, _, ["f", "day"]) => pages::day_fragment(self, &req).await,
             (true, _, ["f", "memos", uid]) => pages::card_fragment(self, &req, uid).await,
             (true, _, ["f", "memos", uid, "source"]) => pages::source(self, uid).await,
             (true, _, ["f", "links"]) => pages::link_search(self, &req).await,
@@ -192,6 +206,8 @@ impl App {
             (_, true, ["views", id, "delete"]) => actions::delete_view(self, id).await,
             (_, true, ["tags"]) => actions::tag_meta(self, &req).await,
             (_, true, ["prefs"]) => actions::prefs(self, &req),
+            (_, true, ["profile"]) => actions::profile(self, &req).await,
+            (true, _, ["avatar"]) => files::avatar(self),
             (true, _, ["thumb", uid]) => files::serve(self, &req, uid, true).await,
             (true, _, ["file", uid, _name]) => files::serve(self, &req, uid, false).await,
             (true, _, ["assets", name]) => self
