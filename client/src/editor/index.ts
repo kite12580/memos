@@ -15,7 +15,7 @@ import { MEMO_EDITOR_THEME, MEMO_FOCUS_EDITOR_THEME, memoEditorLabels, memoExten
 import { MEMO_MARKDOWN } from "../memos/memo-ast";
 import { renderHTML } from "./render";
 import { ready, t } from "./strings";
-import { type Uploaded, uploadFile } from "./upload";
+import { type Uploaded, pairLivePhotos, uploadFile } from "./upload";
 import { wireExtras } from "./extras";
 
 declare const RENDER_VERSION: string;
@@ -143,9 +143,10 @@ export class Session {
   }
 
   async addFiles(files: File[]) {
+    const live = pairLivePhotos(files);
     for (const file of files) {
       try {
-        this.attachments.push(await uploadFile(file));
+        this.attachments.push(await uploadFile(file, undefined, live.get(file)));
         this.renderExtras();
         this.changed();
       } catch (e) {

@@ -16,7 +16,9 @@ pub struct Item {
     pub uid: String,
     pub name: String,
     pub href: String,
+    pub full: String,
     pub thumb: String,
+    pub live: Option<v::Live>,
     pub kind: Kind,
     pub memo: Option<String>,
     type_label: String,
@@ -259,7 +261,7 @@ fn type_label(mime: &str) -> String {
     if subtype.is_empty() { category.to_uppercase() } else { subtype.to_uppercase() }
 }
 
-fn item(c: &Ctx, a: &Attachment, memo: Option<String>) -> Item {
+fn item(c: &Ctx, a: &Attachment, memo: Option<String>, live: Option<v::Live>) -> Item {
     let (date, date_iso) = Timestamp::from_second(a.created_ts)
         .map(|t| {
             let d = t.to_zoned_datetime(c.prefs.tz.clone()).date();
@@ -269,33 +271,52 @@ fn item(c: &Ctx, a: &Attachment, memo: Option<String>) -> Item {
     Item {
         uid: a.uid.clone(),
         name: a.filename.clone(),
-        href: v::file_url(c.base, a),
+        href: live.as_ref().map_or_else(|| v::file_url(c.base, a), |l| l.url.clone()),
+        full: v::file_url(c.base, a),
         thumb: v::thumb_url(c.base, a),
         kind: a.kind,
         memo,
-        type_label: type_label(&a.mime),
+        type_label: if live.is_some() { c.t.s("attachment-library.labels.live-photo").to_string() } else { type_label(&a.mime) },
+        live,
         size_label: file_size(a.size),
         date_iso,
         date,
     }
 }
 
-fn library(c: &Ctx, tab: Section, rows: Vec<(Attachment, Option<String>)>, limit: usize) -> Library {
+type Row = (Attachment, Option<String>, Vec<Attachment>);
+
+fn rows(conn: &rusqlite::Connection, tab: Section, before: Option<i64>, limit: usize) -> crate::db::DbResult<Vec<Row>> {
+    let mut out = vec![];
+    for (a, memo) in atts::library(conn, tab, before, limit)? {
+        let partners = if tab == Section::Unused || a.motion.is_none() {
+            vec![]
+        } else {
+            atts::motion_partners(conn, &a)?.into_iter().filter(|p| p.memo_id == a.memo_id).collect()
+        };
+        out.push((a, memo, partners));
+    }
+    Ok(out)
+}
+
+fn library(c: &Ctx, tab: Section, rows: Vec<Row>, limit: usize) -> Library {
     let mut lib = Library::default();
     if rows.len() > limit {
-        lib.next = rows.get(limit - 1).map(|(a, _)| {
+        lib.next = rows.get(limit - 1).map(|(a, _, _)| {
             format!("{}/f/attachments?tab={}&before={}", c.base, tab.as_str(), a.id)
         });
     }
-    for (a, memo) in rows.into_iter().take(limit) {
+    for (a, memo, partners) in rows.into_iter().take(limit) {
         if tab == Section::Unused {
-            lib.unused.push(item(c, &a, memo));
+            lib.unused.push(item(c, &a, memo, None));
             continue;
         }
         let key = Timestamp::from_second(a.created_ts)
             .map(|t| t.to_zoned_datetime(c.prefs.tz.clone()).date())
             .ok();
-        let it = item(c, &a, memo);
+        let group: Vec<&Attachment> = std::iter::once(&a).chain(&partners).collect();
+        let live = v::visual_items(c.base, &group).into_iter().next().filter(|i| i.a.uid == a.uid).and_then(|i| i.live);
+        let it = item(c, &a, memo, live);
         match a.kind {
             Kind::Image | Kind::Video => {
                 let (k, label) = key.map_or((String::new(), String::new()), |d| {
@@ -359,7 +380,7 @@ pub async fn attachments(app: &Arc<App>, req: &Request) -> Response {
     let limit = limit_for(tab);
     let data = app
         .db
-        .with(move |conn| Ok((atts::section_counts(conn)?, atts::library(conn, tab, None, limit + 1)?)))
+        .with(move |conn| Ok((atts::section_counts(conn)?, rows(conn, tab, None, limit + 1)?)))
         .await;
     let (counts, rows) = match data {
         Ok(d) => d,
@@ -382,7 +403,7 @@ pub async fn attachments_fragment(app: &Arc<App>, req: &Request) -> Response {
     let tab = Section::parse(&req.query("tab").unwrap_or_default());
     let before = req.query("before").and_then(|b| b.parse().ok());
     let limit = limit_for(tab);
-    let rows = match app.db.with(move |conn| atts::library(conn, tab, before, limit + 1)).await {
+    let rows = match app.db.with(move |conn| rows(conn, tab, before, limit + 1)).await {
         Ok(r) => r,
         Err(e) => return e.into(),
     };

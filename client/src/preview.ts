@@ -15,6 +15,9 @@ interface Item {
   src: string;
   name: string;
   video: boolean;
+  motion?: string;
+  pts?: string;
+  zoom: boolean;
 }
 
 const MIN = 1;
@@ -30,7 +33,7 @@ export async function openPreview(from: HTMLElement) {
   await ready;
   const scope = from.closest("[data-composer-extras], [data-card], main") ?? document;
   const sources = [...scope.querySelectorAll<HTMLElement>("[data-action=preview]")];
-  const items: Item[] = sources.map((el) => ({ uid: el.dataset.uid ?? "", src: el.dataset.src!, name: el.dataset.name ?? "", video: el.hasAttribute("data-video") }));
+  const items: Item[] = sources.map(({ dataset: d }) => ({ uid: d.uid ?? "", src: d.src!, name: d.name ?? "", video: "video" in d, motion: d.motion, pts: d.pts, zoom: !("video" in d || d.motion) }));
   let index = Math.max(0, sources.indexOf(from));
   let scale = MIN;
   let pan = { x: 0, y: 0 };
@@ -59,7 +62,7 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
     const surface = $("[data-surface]", root)!;
     const stage = $("[data-stage]", root)!;
     const zoombar = $("[data-zoombar]", root)!;
-    let media: HTMLImageElement | HTMLVideoElement;
+    let media: HTMLElement;
     let dragging: { id: number; x: number; y: number; px: number; py: number; swipe: boolean } | null = null;
 
     const setDisabled = (sel: string, off: boolean) => {
@@ -75,7 +78,7 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
       setDisabled("[data-out]", scale === MIN);
       setDisabled("[data-in]", scale === MAX);
       setDisabled("[data-reset]", scale === MIN);
-      surface.classList.toggle("cursor-zoom-in", !items[index].video && scale === MIN);
+      surface.classList.toggle("cursor-zoom-in", items[index].zoom && scale === MIN);
       media.classList.toggle("cursor-grab", scale > MIN || many);
     };
     const clampPan = () => {
@@ -96,19 +99,27 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
       const item = items[index];
       scale = MIN;
       pan = { x: 0, y: 0 };
-      media = document.createElement(item.video ? "video" : "img");
-      media.className = `${MEDIA}${item.video ? "" : " select-none"}`;
-      media.src = item.src;
-      if (media instanceof HTMLVideoElement) {
-        media.controls = media.autoplay = media.playsInline = true;
+      const alt = (text: string) => text.replace("{{index}}", String(index + 1)).replace("{{count}}", String(items.length));
+      if (item.motion) {
+        media = fromHTML(
+          `<div class="relative max-w-full max-h-full"><div class="relative overflow-hidden max-w-full max-h-full"><img class="block select-none ${MEDIA}" draggable="false" loading="lazy" decoding="async"><video class="pointer-events-none absolute inset-0 h-full w-full transition-opacity duration-200 opacity-0 ${MEDIA}" playsinline="" preload="none" disableremoteplayback=""></video></div><div role="button" tabindex="0" class="absolute select-none rounded-full border border-mu-line/45 bg-mu-canvas/65 px-2.5 py-1 mu-label-sm uppercase tracking-wide text-mu-text backdrop-blur-sm transition-colors hover:bg-mu-canvas/80 mu-focus focus-visible:border-mu-focus left-3 top-3 sm:left-4 sm:top-4" data-live=""></div></div>`,
+        ).firstElementChild as HTMLElement;
+        media.dataset.motion = item.motion;
+        if (item.pts) media.dataset.pts = item.pts;
+        const [img, video, badge] = media.querySelectorAll<HTMLElement>("img, video, [data-live]");
+        Object.assign(img, { src: item.src, alt: alt(t("attachment-preview.live-photo-alt")) });
+        (video as HTMLVideoElement).poster = item.src;
+        badge.setAttribute("aria-label", t("attachment-preview.play-live-photo"));
+        badge.textContent = t("attachment-library.labels.live");
+      } else if (item.video) {
+        media = Object.assign(document.createElement("video"), { className: MEDIA, src: item.src, controls: true, autoplay: true, playsInline: true });
       } else {
-        media.alt = t("attachment-preview.image-alt").replace("{{index}}", String(index + 1)).replace("{{count}}", String(items.length));
-        media.draggable = false;
+        media = Object.assign(document.createElement("img"), { className: `${MEDIA} select-none`, src: item.src, alt: alt(t("attachment-preview.image-alt")), draggable: false });
         media.style.touchAction = "none";
         media.style.transformOrigin = "center center";
       }
       stage.replaceChildren(media);
-      zoombar.hidden = item.video;
+      zoombar.hidden = !item.zoom;
       const name = item.name || t("attachment-preview.title");
       $("[data-name]", root)!.textContent = name;
       $("[data-title]", root)!.textContent = name;
@@ -118,7 +129,7 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
       if (short) short.textContent = `${index + 1}/${items.length}`;
       setDisabled("[data-prev]", index === 0);
       setDisabled("[data-next]", index === items.length - 1);
-      if (!item.video) transform(0, false);
+      if (item.zoom) transform(0, false);
       void showDetails();
     };
     const info = $("[data-info]", root)!;
@@ -127,7 +138,7 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
       info.setAttribute("aria-expanded", String(details));
       $("[data-bar]", root)!.classList.toggle("lg:pr-[23rem]", details);
       surface.classList.toggle("lg:pr-[26rem]", details);
-      media.classList.toggle("lg:max-w-[calc(100vw-30rem)]", details);
+      for (const m of stage.querySelectorAll("img, video")) m.classList.toggle("lg:max-w-[calc(100vw-30rem)]", details);
       for (const c of ["hidden", "lg:block", "lg:pr-[22rem]"]) zoombar.classList.toggle(c, details);
       $("[data-right]", root)?.classList.toggle("lg:right-[23rem]", details);
       const { uid } = items[index];
@@ -209,15 +220,15 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
     surface.addEventListener(
       "wheel",
       (e) => {
-        if (items[index].video) return;
+        if (!items[index].zoom) return;
         e.preventDefault();
         zoom(scale + (e.deltaY < 0 ? STEP : -STEP));
       },
       { passive: false },
     );
-    stage.addEventListener("dblclick", () => !items[index].video && zoom(scale === MIN ? 2 : MIN));
+    stage.addEventListener("dblclick", () => items[index].zoom && zoom(scale === MIN ? 2 : MIN));
     stage.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || items[index].video) return;
+      if (e.button !== 0 || !items[index].zoom) return;
       e.preventDefault();
       media.setPointerCapture(e.pointerId);
       dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, swipe: scale === MIN };

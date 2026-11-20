@@ -11,6 +11,7 @@ pub mod h;
 pub mod http;
 pub mod i18n;
 pub mod media;
+pub mod motion;
 pub mod pages;
 pub mod profile;
 pub mod query;

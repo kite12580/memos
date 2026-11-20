@@ -8,6 +8,28 @@ export interface Uploaded {
   size: number;
   url: string;
   thumb: string;
+  motionGroup: string | null;
+}
+
+export interface LivePart {
+  role: "still" | "video";
+  group: string;
+}
+
+/** memos' pairAppleLivePhotoFiles: the one picture and one video sharing a name are a Live Photo. */
+export function pairLivePhotos(files: File[]): Map<File, LivePart> {
+  const stem = (f: File) => (f.name.includes(".") ? f.name.slice(0, f.name.lastIndexOf(".")) : f.name).toLowerCase();
+  const out = new Map<File, LivePart>();
+  for (const name of new Set(files.map(stem))) {
+    const same = files.filter((f) => stem(f) === name);
+    const stills = same.filter((f) => f.type.startsWith("image/"));
+    const videos = same.filter((f) => f.type.startsWith("video/"));
+    if (stills.length !== 1 || videos.length !== 1) continue;
+    const group = `${name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+    out.set(stills[0], { role: "still", group });
+    out.set(videos[0], { role: "video", group });
+  }
+  return out;
 }
 
 const THUMB_SIDE = 640;
@@ -70,10 +92,14 @@ function videoThumb(file: Blob): Promise<VideoInfo> {
   });
 }
 
-export async function uploadFile(file: File | Blob, name = (file as File).name || "file"): Promise<Uploaded> {
+export async function uploadFile(file: File | Blob, name = (file as File).name || "file", live?: LivePart): Promise<Uploaded> {
   const type = file.type || "application/octet-stream";
   let thumb: Blob | null = null;
   const params = new URLSearchParams({ name, type });
+  if (live) {
+    params.set("motion", live.role);
+    params.set("group", live.group);
+  }
   const saveMedia = document.cookie.split("; ").includes("media=1");
   let media: object | undefined;
   if (type.startsWith("image/") && type !== "image/svg+xml") {
