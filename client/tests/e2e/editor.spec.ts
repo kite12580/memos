@@ -126,4 +126,114 @@ test("opens tag suggestions for a tag typed before the editor loads", async ({ p
   await expect(page.getByRole("option", { name: "#earlytag" })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator("[data-composer=create] .memo-editor-root")).toContainText("hi #earlytag");
+||||||| parent of a0de4be1 (feat: memos' composer attachment toolbar and reordering)
+
+test("the composer's attachments carry memos' toolbar and details, and keep the order they are dragged into", async ({ page, request }) => {
+  await page.goto("/");
+  await page.locator("[data-composer=create] .memo-editor-root").click();
+  await page.keyboard.type("ordered attachments");
+  await page.locator("[data-composer=create] [data-popup=insert-menu]").click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.locator("[data-insert=attachment]").click();
+  await (await chooser).setFiles([
+    { name: "first.png", mimeType: "image/png", buffer: png() },
+    { name: "second.png", mimeType: "image/png", buffer: png() },
+    { name: "one.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(3009, 1) },
+    { name: "two.txt", mimeType: "text/plain", buffer: Buffer.alloc(600, 97) },
+  ]);
+  const extras = page.locator("[data-composer=create] [data-composer-extras]");
+  const tiles = extras.locator("[data-reorder=tiles] > [data-reorder-key]");
+  const rows = extras.locator("[data-reorder=rows] > [data-reorder-key]");
+  await expect(tiles).toHaveCount(2);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("New·PDF·2.9 KB");
+
+  await tiles.first().hover();
+  const keys = tiles.first().locator("[data-extra]:visible");
+  await expect(keys).toHaveCount(3);
+  expect(await keys.evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")))).toEqual(["Markup", "Insert image", "Remove attachment"]);
+
+  const box = async (i: number) => (await tiles.nth(i).boundingBox())!;
+  const [a, b] = [await box(0), await box(1)];
+  await page.mouse.move(a.x + 20, a.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 30, a.y + 80, { steps: 2 });
+  await page.mouse.move(b.x + 40, b.y + 80, { steps: 8 });
+  await page.mouse.up();
+  await expect(tiles.first()).toHaveAttribute("aria-label", "Preview second.png");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await rows.first().locator("[data-reorder-handle]").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(rows.first()).toContainText("two.txt");
+
+  await tiles.first().focus();
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(tiles.first()).toHaveAttribute("aria-label", "Preview first.png");
+  await tiles.nth(1).focus();
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(tiles.first()).toHaveAttribute("aria-label", "Preview second.png");
+
+  await page.locator("[data-composer=create] [data-action=save]").click();
+  await expect(extras.locator("[data-reorder-key]")).toHaveCount(0);
+  const uid = await page.locator("#memo-list article").filter({ hasText: "ordered attachments" }).first().getAttribute("data-card");
+  const memo = await (await request.get(`/api/memos/${uid}`, auth)).json();
+  expect(memo.attachments.map((x: { filename: string }) => x.filename)).toEqual(["second.png", "first.png", "two.txt", "one.pdf"]);
+});
+
+test("the composer removes an attachment and inserts an image into the text from its toolbar", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("[data-composer=create] .memo-editor-root").click();
+  await page.locator("[data-composer=create] [data-popup=insert-menu]").click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.locator("[data-insert=attachment]").click();
+  await (await chooser).setFiles([
+    { name: "keep.png", mimeType: "image/png", buffer: png() },
+    { name: "drop.png", mimeType: "image/png", buffer: png() },
+  ]);
+  const tiles = page.locator("[data-composer=create] [data-reorder=tiles] > [data-reorder-key]");
+  await expect(tiles).toHaveCount(2);
+  await tiles.nth(1).hover();
+  await tiles.nth(1).getByRole("button", { name: "Remove attachment" }).click();
+  await expect(tiles).toHaveCount(1);
+  await tiles.first().hover();
+  await tiles.first().getByRole("button", { name: "Insert image" }).click();
+  await expect(tiles).toHaveCount(0);
+  await expect(page.locator("[data-composer=create] .memo-editor-root img")).toHaveCount(1);
+});
+
+test("editing a memo lists its links with their dates and the memos linking to it", async ({ page, request }) => {
+  const { uid: target } = await (await request.post("/api/memos", { ...auth, data: { content: "relation target memo" } })).json();
+  await page.goto("/");
+  await page.locator("[data-composer=create] .memo-editor-root").click();
+  await page.keyboard.type("relation source memo");
+  await page.locator("[data-composer=create] [data-popup=insert-menu]").click();
+  await page.locator("[data-insert=link]").click();
+  await expect(page.getByRole("dialog").getByPlaceholder("Search")).toBeFocused();
+  await page.keyboard.type("relation target");
+  await page.keyboard.press("Enter");
+  const extras = page.locator("[data-composer=create] [data-composer-extras]");
+  await expect(extras.locator(`[data-link="${target}"]`)).toContainText("relation target memo");
+  await expect(extras.locator(`[data-link="${target}"] time`)).toHaveAttribute("data-fmt", "short");
+  await page.locator("[data-composer=create] [data-action=save]").click();
+  await expect(extras.locator("[data-link]")).toHaveCount(0);
+
+  const card = page.locator(`article#m-${target}`);
+  await card.hover();
+  await card.locator("[data-popup=memo-menu]").click();
+  await page.locator("[role=menu] [data-action=edit]").click();
+  const back = card.locator("[data-composer-extras] a[title='Referenced by']");
+  await expect(back).toContainText("relation source memo");
+  await expect(back.locator("time")).toHaveCount(1);
+  await card.locator("[data-cancel]").click();
+
+  const source = page.locator("#memo-list article").filter({ hasText: "relation source memo" }).first();
+  await source.hover();
+  await source.locator("[data-popup=memo-menu]").click();
+  await page.locator("[role=menu] [data-action=edit]").click();
+  const link = source.locator(`[data-composer-extras] [data-link="${target}"]`);
+  await expect(link).toContainText("relation target memo");
+  await link.hover();
+  await link.getByRole("button", { name: "Remove relation" }).click();
+  await expect(link).toHaveCount(0);
 });

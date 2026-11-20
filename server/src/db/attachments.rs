@@ -99,6 +99,15 @@ pub fn get(c: &Connection, uid: &str) -> DbResult<Option<Attachment>> {
         .optional()?)
 }
 
+/// The attachments with these uids, in the order given; unknown uids are skipped.
+pub fn by_uids(c: &Connection, uids: &[String]) -> DbResult<Vec<Attachment>> {
+    let mut out = Vec::with_capacity(uids.len());
+    for uid in uids {
+        out.extend(get(c, uid)?);
+    }
+    Ok(out)
+}
+
 pub fn set_thumb(c: &Connection, uid: &str) -> DbResult<bool> {
     Ok(c.prepare_cached("UPDATE attachment SET has_thumb = 1 WHERE uid = ?")?
         .execute([uid])?

@@ -1,9 +1,9 @@
-import { createCanvas, drawingFileName, type ToolName } from "@usememos/canvas";
+import { createCanvas, drawingFileName, readScenePng, type ToolName } from "@usememos/canvas";
 import { icon } from "../lib/icon";
 import { closeLayer, openDialog } from "../lib/popup";
-import { toastError } from "../lib/toast";
+import { toast, toastError } from "../lib/toast";
 import type { Session } from "./index";
-import { uploadFile } from "./upload";
+import { type Uploaded, uploadFile } from "./upload";
 
 const TOOLS: [ToolName, string, string][] = [
   ["select", "mouse-pointer-2", "editor.drawing.tool-select"],
@@ -18,8 +18,24 @@ const TOOLS: [ToolName, string, string][] = [
 const button = (attrs: string, iconName: string, label: string) =>
   `<button type="button" ${attrs} aria-label="${label}" title="${label}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-md mu-focus">${icon(iconName, "")}</button>`;
 
+async function readSource(source: Uploaded) {
+  const res = await fetch(source.url);
+  if (!res.ok) throw new Error(res.statusText);
+  const blob = await res.blob();
+  const { scene } = await readScenePng(blob);
+  return { scene, blob };
+}
+
 /** A drawing sheet on @usememos/canvas; saving attaches the drawing as a PNG. */
-export function openDrawing(session: Session, t: (k: string) => string) {
+export async function openDrawing(session: Session, t: (k: string) => string, source?: Uploaded) {
+  let content: Awaited<ReturnType<typeof readSource>> | undefined;
+  if (source) {
+    try {
+      content = await readSource(source);
+    } catch {
+      return toast(t("editor.drawing.open-failed"), "danger");
+    }
+  }
   let template = document.getElementById("tpl-draw") as HTMLTemplateElement | null;
   if (!template) {
     template = document.createElement("template");
@@ -46,6 +62,8 @@ export function openDrawing(session: Session, t: (k: string) => string) {
           },
         });
         handle.setTool("pen");
+        if (content?.scene) handle.setScene(content.scene);
+        else if (content) void handle.insertImage(content.blob, { background: true });
       });
       root.addEventListener("click", async (e) => {
         const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tool], [data-draw]");
@@ -63,7 +81,11 @@ export function openDrawing(session: Session, t: (k: string) => string) {
             if (handle.isEmpty()) return closeLayer(root);
             try {
               const png = await handle.exportPng();
-              session.attachments.push(await uploadFile(png, drawingFileName()));
+              const drawing = await uploadFile(png, drawingFileName());
+              const at = source ? session.attachments.indexOf(source) : -1;
+              if (at < 0) session.attachments.push(drawing);
+              else if (content?.scene) session.attachments[at] = drawing;
+              else session.attachments.splice(at + 1, 0, drawing);
               session.renderExtras();
               session.changed();
               closeLayer(root);

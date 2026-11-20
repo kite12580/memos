@@ -20,7 +20,7 @@ const button = (label: string, name: string, attrs = "") =>
 
 export async function openPreview(from: HTMLElement) {
   await ready;
-  const scope = from.closest("[data-card], main") ?? document;
+  const scope = from.closest("[data-composer-extras], [data-card], main") ?? document;
   const sources = [...scope.querySelectorAll<HTMLElement>("[data-action=preview]")];
   const items: Item[] = sources.map((el) => ({ src: el.dataset.src!, name: el.dataset.name ?? "", video: el.hasAttribute("data-video") }));
   let index = Math.max(0, sources.indexOf(from));

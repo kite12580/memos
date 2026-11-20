@@ -56,7 +56,7 @@ export async function openRecorder(session: Session, t: (k: string) => string) {
     const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
     const d = new Date();
     const ext = blob.type.includes("mp4") ? "m4a" : "webm";
-    const name = `recording-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
+    const name = `voice-note-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
     try {
       session.attachments.push(await uploadFile(blob, name));
       session.renderExtras();

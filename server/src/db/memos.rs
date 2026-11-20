@@ -388,6 +388,21 @@ pub fn relations(c: &Connection, ids: &[i64]) -> DbResult<HashMap<i64, Links>> {
     Ok(out)
 }
 
+/// The memos with these uids, in the order given; unknown uids are skipped.
+pub fn links(c: &Connection, uids: &[String]) -> DbResult<Vec<MemoLink>> {
+    let mut st = c.prepare_cached("SELECT uid, snippet, created_ts FROM memo WHERE uid = ?")?;
+    let mut out = Vec::with_capacity(uids.len());
+    for uid in uids {
+        if let Some(l) = st
+            .query_row([uid], |r| Ok(MemoLink { uid: r.get(0)?, snippet: r.get(1)?, created_ts: r.get(2)? }))
+            .optional()?
+        {
+            out.push(l);
+        }
+    }
+    Ok(out)
+}
+
 /// Replaces the memos `id` links to. Unknown uids and links to itself are
 /// skipped.
 pub fn set_relations(tx: &Transaction, id: i64, uids: &[String]) -> DbResult<()> {
