@@ -1,6 +1,18 @@
 export const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel);
 export const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => [...root.querySelectorAll<T>(sel)];
 
+declare global {
+  interface Window {
+    __navigate?: (url: string, replace?: boolean) => Promise<void>;
+  }
+}
+
+/** Opens `url`, in place once the navigator (nav.ts) has loaded. */
+export const go = (url: string) => (window.__navigate ? void window.__navigate(url) : location.assign(url));
+
+/** Shows the page again as the server has it now, in place and at the same scroll position when it can. */
+export const reload = () => (window.__navigate ? void window.__navigate(location.href, true) : location.reload());
+
 /** The app's path prefix, `""` or `/memos`. */
 export const base = document.body.dataset.base ?? "";
 

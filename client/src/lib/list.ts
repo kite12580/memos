@@ -63,7 +63,7 @@ async function loadMore(sentinel: HTMLElement, observer: IntersectionObserver) {
   }
 }
 
-export function initList() {
+export function initList(signal: AbortSignal) {
   const l = list();
   if (!l) return;
   const observer = new IntersectionObserver(
@@ -74,6 +74,7 @@ export function initList() {
   );
   const sentinel = $("[data-next]", l);
   if (sentinel) observer.observe(sentinel);
+  signal.addEventListener("abort", () => observer.disconnect());
   if (l.dataset.layout !== "list") {
     let width = l.clientWidth;
     addEventListener("resize", () => {
@@ -81,6 +82,6 @@ export function initList() {
         width = l.clientWidth;
         layoutGrid();
       }
-    });
+    }, { signal });
   }
 }

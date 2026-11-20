@@ -1,4 +1,4 @@
-import { $, $$, fromHTML, post, request, strings } from "./dom";
+import { $, $$, fromHTML, go, post, reload, request, strings } from "./dom";
 import { closeAll, closeDialog, openDialog, openTemplate } from "./popup";
 import { formatTimes } from "./time";
 import { toast, toastError } from "./toast";
@@ -67,7 +67,7 @@ export async function refreshChrome() {
 
 export async function pin(card: HTMLElement, on: boolean) {
   await cardAction(card, "pin", { on });
-  if (card.closest("#memo-list")) location.reload();
+  if (card.closest("#memo-list")) reload();
 }
 
 export async function archive(card: HTMLElement, on: boolean) {
@@ -80,7 +80,7 @@ export async function archive(card: HTMLElement, on: boolean) {
       toast(done);
     } else {
       sessionStorage.setItem("toast", done);
-      location.reload();
+      reload();
     }
   } catch (e) {
     toastError(e);
@@ -98,7 +98,7 @@ export function confirmDelete(card: HTMLElement) {
         await post(`/memos/${card.dataset.card}/delete`);
         toast(strings.deleted);
         if (card.closest("#memo-list, [data-comments], [data-day-cards]")) removeCard(card);
-        else location.href = `${document.body.dataset.base}/`;
+        else go(`${document.body.dataset.base}/`);
       } catch (e) {
         toastError(e);
       }

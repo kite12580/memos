@@ -16,6 +16,10 @@ memos branches in this repository; never merge between them.
 
 ## Rules
 
+- `src/nav.ts` opens app links and search forms in place: it fetches the page, swaps `#root`
+  and the popup templates, and fires `memos:page`. A page chunk exports
+  `default (signal: AbortSignal)`, which runs on every visit; listeners on `document` or
+  `window` take that `signal`. Use `go()` and `reload()` from `lib/dom.ts`, not `location`.
 - Markup comes only from the server templates. The client fetches HTML fragments and swaps
   them in; it never builds cards.
 - A memo's stored HTML is what memos' editor renders read-only in the browser

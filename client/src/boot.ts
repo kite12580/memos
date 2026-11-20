@@ -2,7 +2,7 @@
 // through `data-action` and `data-popup` attributes and never builds cards;
 // the editor and the emoji picker load on first use.
 
-import { $, $$, fromHTML, idle, post, request } from "./lib/dom";
+import { $, $$, fromHTML, go, idle, post, reload as softReload, request } from "./lib/dom";
 import { formatTimes } from "./lib/time";
 import { closeAll, closeDialog, enter, initPopups, isOpenFor, openDialog, openPopup, openTemplate } from "./lib/popup";
 import * as cards from "./lib/cards";
@@ -18,7 +18,9 @@ const editor = () => import("./editor/index");
 async function setPref(key: string, value: string, reload = true) {
   try {
     await post("/prefs", { key, value });
-    if (reload) location.reload();
+    if (!reload) return;
+    if (key === "lang") location.reload();
+    else softReload();
   } catch (e) {
     toastError(e);
   }
@@ -278,7 +280,7 @@ document.addEventListener("click", (e) => {
   const checkbox = target.closest<HTMLInputElement>(".memo-content-root input.mbe-checkbox");
   if (checkbox) return void cards.toggleTask(checkbox);
   const tag = target.closest<HTMLElement>(".memo-content-root [data-tag][role=button]");
-  if (tag) return void location.assign(`${document.body.dataset.base}/?q=${encodeURIComponent(`#${tag.dataset.tag}`)}`);
+  if (tag) return void go(`${document.body.dataset.base}/?q=${encodeURIComponent(`#${tag.dataset.tag}`)}`);
   const sub = target.closest<HTMLElement>("[data-submenu]");
   if (sub) return void openTemplate(sub, sub.dataset.submenu!, "inline-end", "start");
   const select = target.closest<HTMLElement>("[data-select]");
@@ -345,26 +347,39 @@ if (tz && !document.cookie.includes(`tz=${encodeURIComponent(tz)}`)) void setPre
 
 initPopups();
 initTooltips();
-formatTimes();
-cards.initClamps();
-initList();
-initResize();
-renderStale();
 document.addEventListener("memos:cards", renderStale);
-const composer = $("[data-composer=create]");
-if (composer && location.hash === "#compose") $("[contenteditable]", composer)?.focus();
-else if (composer && localStorage.getItem("memos-lite-draft")?.trim()) void editor().then((m) => m.activate(composer, false));
-const flash = sessionStorage.getItem("toast");
-if (flash) {
-  sessionStorage.removeItem("toast");
-  toast(flash);
-}
 
-const pages: Record<string, () => Promise<unknown>> = {
+const pages: Record<string, () => Promise<{ default: (signal: AbortSignal) => void }>> = {
   calendar: () => import("./pages/calendar"),
   attachments: () => import("./pages/attachments"),
   views: () => import("./pages/views"),
   settings: () => import("./pages/settings"),
 };
-const page = $("[data-page]")?.dataset.page;
-if (page) void pages[page]?.();
+
+let leave = new AbortController();
+
+/** Wires the page in `<main>`: on load, and again each time the navigator swaps in another. */
+function initPage() {
+  leave.abort();
+  leave = new AbortController();
+  const { signal } = leave;
+  formatTimes();
+  cards.initClamps();
+  initList(signal);
+  initResize();
+  renderStale();
+  const composer = $("[data-composer=create]");
+  if (composer && location.hash === "#compose") $("[contenteditable]", composer)?.focus();
+  else if (composer && localStorage.getItem("memos-lite-draft")?.trim()) void editor().then((m) => m.activate(composer, false));
+  const flash = sessionStorage.getItem("toast");
+  if (flash) {
+    sessionStorage.removeItem("toast");
+    toast(flash);
+  }
+  const page = $("[data-page]")?.dataset.page;
+  if (page) void pages[page]?.().then((m) => signal.aborted || m.default(signal));
+}
+
+initPage();
+document.addEventListener("memos:page", initPage);
+void import("./nav");
