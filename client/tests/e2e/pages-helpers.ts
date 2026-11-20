@@ -3,8 +3,8 @@ import { deflateSync } from "node:zlib";
 
 export const auth = { authorization: "Bearer e2e-token" };
 
-/** A 4×4 PNG of one color. */
-export function png(rgb: [number, number, number] = [128, 128, 128]): Buffer {
+/** A 4×4 PNG of one color, with `exif` as its eXIf chunk. */
+export function png(rgb: [number, number, number] = [128, 128, 128], exif?: Buffer): Buffer {
   const crc = (buf: Buffer) => {
     let c = ~0;
     for (const b of buf) {
@@ -28,11 +28,11 @@ export function png(rgb: [number, number, number] = [128, 128, 128]): Buffer {
   ihdr[9] = 2;
   const row = Buffer.from([0, ...Array.from({ length: 4 }, () => rgb).flat()]);
   const raw = Buffer.concat(Array.from({ length: 4 }, () => row));
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), ...(exif ? [chunk("eXIf", exif)] : []), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-/** A JPEG holding only an EXIF segment: camera, capture time and aperture. */
-export function exifJpeg(): Buffer {
+/** An EXIF TIFF block: camera, capture time and aperture. */
+export function exifTiff(): Buffer {
   const ascii = (s: string) => Buffer.from(`${s}\0`, "latin1");
   const u32 = (n: number) => {
     const b = Buffer.alloc(4);
@@ -62,7 +62,12 @@ export function exifJpeg(): Buffer {
   const exifAt = 8 + ifd0(0).length;
   const date = ascii("2024:05:01 14:23:45");
   const exif = ifd(exifAt, [[0x9003, 2, date.length, date], [0x829d, 5, 1, Buffer.concat([u32(28), u32(10)])]]);
-  const app1 = Buffer.concat([Buffer.from("Exif\0\0", "latin1"), Buffer.from("II*\0", "latin1"), u32(8), ifd0(exifAt), exif]);
+  return Buffer.concat([Buffer.from("II*\0", "latin1"), u32(8), ifd0(exifAt), exif]);
+}
+
+/** A JPEG holding only the `exifTiff` APP1 segment. */
+export function exifJpeg(): Buffer {
+  const app1 = Buffer.concat([Buffer.from("Exif\0\0", "latin1"), exifTiff()]);
   const len = Buffer.alloc(2);
   len.writeUInt16BE(app1.length + 2);
   return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1]), len, app1, Buffer.from([0xff, 0xd9])]);
