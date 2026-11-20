@@ -22,7 +22,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub const PAGE_SIZE: usize = 20;
+pub const PAGE_SIZE: usize = 16;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
@@ -73,6 +73,7 @@ struct HomePage<'a> {
     list: ListView,
     list_url: String,
     clear_href: String,
+    highlight: String,
 }
 
 #[derive(Template)]
@@ -337,6 +338,18 @@ pub fn active_tag(terms: &[Term]) -> Option<String> {
     }
 }
 
+/// The words of a search, for the client to highlight in memo bodies.
+fn search_words(terms: &[Term]) -> String {
+    let words: Vec<&str> = terms
+        .iter()
+        .filter_map(|t| match &t.atom {
+            Atom::Text(w) if !t.neg => Some(w.as_str()),
+            _ => None,
+        })
+        .collect();
+    if words.is_empty() { String::new() } else { serde_json::to_string(&words).unwrap_or_default() }
+}
+
 pub struct Filters {
     pub path: String,
     pub view: Option<i64>,
@@ -398,6 +411,7 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
     let month = month_start_of(&c, &terms);
     let (from, to) = v::month_range(month, &c.prefs.tz);
     let lq = list_query(&c, scope, terms.clone(), None);
+    let archived = scope == Scope::Archived;
     let app2 = app.clone();
     let data = app
         .db
@@ -416,8 +430,8 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
                 extras,
                 memos: ms,
                 next,
-                tags: app2.tag_counts(conn)?,
-                month: memos::created_between(conn, from, to)?,
+                tags: if archived { app2.archived_tag_counts(conn)? } else { app2.tag_counts(conn)? },
+                month: memos::created_between(conn, from, to, archived)?,
                 views,
                 view,
             })
@@ -456,6 +470,7 @@ pub async fn home(app: &Arc<App>, req: &Request, scope: Scope) -> Response {
         list,
         list_url,
         clear_href: path,
+        highlight: search_words(&terms),
         c,
     };
     page(&etag, &p)
@@ -519,7 +534,7 @@ pub async fn month_fragment(app: &Arc<App>, req: &Request) -> Response {
         terms: terms.clone(),
     };
     let (from, to) = v::month_range(month, &c.prefs.tz);
-    let created = match app.db.with(move |conn| memos::created_between(conn, from, to)).await {
+    let created = match app.db.with(move |conn| memos::created_between(conn, from, to, scope == Scope::Archived)).await {
         Ok(v) => v,
         Err(e) => return e.into(),
     };

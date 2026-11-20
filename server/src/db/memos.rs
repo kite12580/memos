@@ -453,15 +453,15 @@ pub fn latest_comments(c: &Connection, ids: &[i64], per: usize) -> DbResult<Hash
     Ok(out)
 }
 
-/// Tags of non-archived top-level memos with how many memos carry each,
+/// Tags of top-level memos, archived or not, with how many memos carry each,
 /// counting a memo under every ancestor of a nested tag, busiest first.
-pub fn tag_counts(c: &Connection) -> DbResult<Vec<(String, i64)>> {
+pub fn tag_counts(c: &Connection, archived: bool) -> DbResult<Vec<(String, i64)>> {
     let mut st = c.prepare_cached(
         "SELECT t.tag, t.memo_id FROM memo_tag t JOIN memo m ON m.id = t.memo_id
-         WHERE m.archived = 0 AND m.parent_id IS NULL",
+         WHERE m.archived = ? AND m.parent_id IS NULL",
     )?;
     let mut memos_by_tag: HashMap<String, std::collections::HashSet<i64>> = HashMap::new();
-    for row in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
+    for row in st.query_map([archived], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
         let (tag, id) = row?;
         let mut end = 0;
         for seg in tag.split('/') {
@@ -475,13 +475,29 @@ pub fn tag_counts(c: &Connection) -> DbResult<Vec<(String, i64)>> {
     Ok(out)
 }
 
-/// Creation times of non-archived top-level memos in `[from, to)`.
-pub fn created_between(c: &Connection, from: i64, to: i64) -> DbResult<Vec<i64>> {
+pub fn all_tags(c: &Connection) -> DbResult<Vec<String>> {
+    Ok(c.prepare_cached("SELECT DISTINCT tag FROM memo_tag")?
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?)
+}
+
+/// Top-level memos that are not archived, by tag.
+pub fn tagged(c: &Connection) -> DbResult<Vec<(String, i64)>> {
     Ok(c.prepare_cached(
-        "SELECT created_ts FROM memo m WHERE m.parent_id IS NULL AND m.archived = 0
+        "SELECT t.tag, t.memo_id FROM memo_tag t JOIN memo m ON m.id = t.memo_id
+         WHERE m.archived = 0 AND m.parent_id IS NULL",
+    )?
+    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+    .collect::<rusqlite::Result<_>>()?)
+}
+
+/// Creation times of top-level memos, archived or not, in `[from, to)`.
+pub fn created_between(c: &Connection, from: i64, to: i64, archived: bool) -> DbResult<Vec<i64>> {
+    Ok(c.prepare_cached(
+        "SELECT created_ts FROM memo m WHERE m.parent_id IS NULL AND m.archived = ?
          AND m.created_ts >= ? AND m.created_ts < ? ORDER BY m.created_ts",
     )?
-    .query_map([from, to], |r| r.get(0))?
+    .query_map(params![archived, from, to], |r| r.get(0))?
     .collect::<rusqlite::Result<_>>()?)
 }
 
@@ -564,9 +580,14 @@ mod tests {
             assert_eq!(list(c, &q("#t1", None, 10))?.0.len(), 2);
             assert_eq!(list(c, &q("-#t1 memo", None, 10))?.0.len(), 3);
             assert_eq!(list(c, &q("is:pinned", None, 10))?.0.len(), 1);
-            assert_eq!(tag_counts(c)?, vec![("t0".into(), 3), ("t1".into(), 2)]);
+            assert_eq!(tag_counts(c, false)?, vec![("t0".into(), 3), ("t1".into(), 2)]);
             create(c, new("#a/b #a/c", 9))?;
-            assert_eq!(tag_counts(c)?[2..], [("a".into(), 1), ("a/b".into(), 1), ("a/c".into(), 1)]);
+            assert_eq!(tag_counts(c, false)?[2..], [("a".into(), 1), ("a/b".into(), 1), ("a/c".into(), 1)]);
+            let archived = create(c, new("#old", 10))?;
+            set_flag(c, &archived.uid, Flag::Archived, true, 11)?;
+            assert_eq!(tag_counts(c, true)?, vec![("old".into(), 1)]);
+            assert_eq!(created_between(c, 0, 100, true)?, vec![10]);
+            assert!(!tag_counts(c, false)?.iter().any(|(t, _)| t == "old"));
             Ok(())
         })
         .unwrap();

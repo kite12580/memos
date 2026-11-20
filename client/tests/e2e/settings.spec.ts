@@ -79,7 +79,10 @@ test("sets the account's nickname and avatar, and the server's name and icon", a
 test("tag rules color tags and blur their memos", async ({ page, request }) => {
   const uid = await memo(request, "Secret stuff #hush/deep and #paint");
   await page.goto("/settings#tags");
-  await page.locator("[data-new-tag]").fill("hush");
+  await page.locator("[data-new-tag]").fill("hush/(");
+  await page.locator("[data-add]").click();
+  await expect(page.locator("[data-new-field] .mu-field-error")).toHaveText("Invalid or unsafe regex pattern.");
+  await page.locator("[data-new-tag]").fill("hush/.*");
   await page.locator("[data-new-blur]").click();
   await page.locator("[data-add]").click();
   await page.locator("[data-new-tag]").fill("paint");
@@ -103,7 +106,8 @@ test("tag rules color tags and blur their memos", async ({ page, request }) => {
   await expect(card.locator("[data-slot=memo-body] > div").first()).not.toHaveClass(/blur-lg/);
 
   await page.goto("/settings#tags");
-  await page.locator("[data-rule=hush] [data-rule-delete]").click();
+  await expect(page.locator('[data-rule="hush/.*"]')).toContainText("1 memo");
+  await page.locator('[data-rule="hush/.*"] [data-rule-delete]').click();
   await page.locator("[data-rule=paint] [data-rule-delete]").click();
   await page.locator("[data-save-tags]").click();
   await expect(page.getByText("No tag metadata configured.")).toBeVisible();

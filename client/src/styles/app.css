@@ -44,6 +44,10 @@
   body {
     @apply bg-mu-canvas text-mu-text;
   }
+
+  ::highlight(memo-search-match) {
+    background-color: color-mix(in oklch, var(--mu-warning) 40%, transparent);
+  }
 }
 
 @layer components {

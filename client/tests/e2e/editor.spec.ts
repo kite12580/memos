@@ -92,7 +92,7 @@ test("searches and pages through memos", async ({ page, request }) => {
   await page.locator("input[name=q]").fill("#paging");
   await page.locator("input[name=q]").press("Enter");
   await expect(page).toHaveURL(/q=%23paging/);
-  await expect(page.locator("#memo-list article")).toHaveCount(20);
+  await expect(page.locator("#memo-list article")).toHaveCount(16);
   await page.mouse.wheel(0, 20000);
   await expect(page.locator("#memo-list article")).toHaveCount(25);
 });
@@ -102,4 +102,10 @@ test("renders memos from the API again in the browser", async ({ page, request }
   await page.goto(`/memos/${uid}`);
   await expect(page.locator(`article#m-${uid}`)).not.toHaveAttribute("data-stale", "");
   await expect.poll(async () => (await (await request.get(`/memos/${uid}`)).text()).includes(`id="m-${uid}"`) && !(await (await request.get(`/memos/${uid}`)).text()).includes("data-stale")).toBe(true);
+});
+
+test("highlights the searched words in memo bodies", async ({ page, request }) => {
+  await request.post("/api/memos", { ...auth, data: { content: "a Zebracorn appears" } });
+  await page.goto("/?q=zebracorn");
+  await expect.poll(() => page.evaluate(() => [...(CSS.highlights.get("memo-search-match") ?? [])].map((r) => r.toString()))).toEqual(["Zebracorn"]);
 });

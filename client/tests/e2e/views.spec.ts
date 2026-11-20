@@ -41,7 +41,7 @@ test("creates, edits, reorders and deletes a saved view", async ({ page, request
   await page.locator("[data-save]").click();
   await expect(page.locator("[data-view]").filter({ hasText: "Tagged memos" })).toHaveCount(1);
 
-  await page.locator("#sidebar").getByRole("button", { name: "Tagged memos" }).click();
+  await page.locator("#sidebar").getByRole("button", { name: "Tagged memos", exact: true }).click();
   await expect(page).toHaveURL(/\/\?view=\d+$/);
   await expect(page.locator("#memo-list article")).toHaveCount(1);
   await expect(page.locator("#memo-list article")).toContainText("View target");
@@ -62,4 +62,30 @@ test("refuses a view without a title", async ({ page }) => {
   await page.locator("#view-filter").fill("is:pinned");
   await page.locator("[data-save]").click();
   await expect(page.locator(".mu-toast-danger")).toContainText("Title and filter cannot be empty");
+});
+
+test("edits and deletes a view from its sidebar menu", async ({ page }) => {
+  await page.goto("/views#new");
+  await page.locator("#view-title").fill("Sidebar view");
+  await page.locator("#view-filter").fill("is:pinned");
+  await page.locator("[data-save]").click();
+  await expect(page.locator("[data-view]")).toHaveCount(1);
+  const id = await page.locator("[data-view]").getAttribute("data-view");
+
+  await page.goto(`/?view=${id}`);
+  const sidebar = page.locator("#sidebar");
+  await expect(sidebar.getByRole("link", { name: "Manage" })).toHaveCount(0);
+  await sidebar.getByRole("button", { name: "Edit Sidebar view" }).click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await expect(page).toHaveURL(/\/views$/);
+  await expect(page.locator("#view-title")).toHaveValue("Sidebar view");
+
+  await page.goto(`/?view=${id}`);
+  await sidebar.getByRole("button", { name: "Edit Sidebar view" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Are you sure you want to delete view `Sidebar view`?");
+  await page.locator("[data-action=dialog-ok]").click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator(".mu-toast")).toContainText("View `Sidebar view` deleted successfully");
+  await expect(sidebar.getByRole("button", { name: "Sidebar view", exact: true })).toHaveCount(0);
 });

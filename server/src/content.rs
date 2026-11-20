@@ -76,7 +76,7 @@ pub struct Derived {
     pub has_image: bool,
 }
 
-fn unescape(s: &str) -> String {
+pub fn unescape(s: &str) -> String {
     s.replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")

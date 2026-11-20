@@ -338,6 +338,9 @@ pub async fn tag_meta(app: &Arc<App>, req: &Request) -> Response {
     let Some(tag) = b["tag"].as_str().map(|t| t.trim_start_matches('#').to_string()).filter(|t| !t.is_empty()) else {
         return Response::error(400, "tag is required");
     };
+    if crate::views::is_pattern(&tag) && regex_lite::Regex::new(&tag).is_err() {
+        return Response::error(400, "invalid tag pattern");
+    }
     let color = b["color"]
         .as_str()
         .filter(|c| c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit()))
@@ -350,15 +353,12 @@ pub async fn tag_meta(app: &Arc<App>, req: &Request) -> Response {
     };
     let res = app
         .db
-        .tx(move |c| {
-            views::set_tag_meta(c, &meta)?;
-            views::tag_meta(c)
-        })
+        .tx(move |c| views::set_tag_meta(c, &meta))
         .await;
     match res {
-        Ok(meta) => {
-            app.set_tag_meta(meta);
+        Ok(()) => {
             app.changed();
+            app.load_tag_styles();
             Response::new(204)
         }
         Err(e) => e.into(),

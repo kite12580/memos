@@ -37,18 +37,19 @@ impl App {
         crate::h::set_sprite(format!("{}/{}", cfg.base, assets.sprite));
         let mut seed = [0u8; 4];
         let _ = getrandom::fill(&mut seed);
-        let meta = db.blocking(|c| crate::db::views::tag_meta(c)).unwrap_or_default();
         let profile = db.blocking(|c| Profile::load(c)).unwrap_or_default();
-        App {
+        let app = App {
             db,
             cfg,
             assets,
             data_version: AtomicU64::new(u32::from_le_bytes(seed) as u64),
             tags: Mutex::new(None),
-            tag_styles: Mutex::new(Arc::new(TagStyles::new(meta))),
+            tag_styles: Mutex::new(Arc::new(TagStyles::default())),
             profile: Mutex::new(Arc::new(profile)),
             now: crate::http::now_secs,
-        }
+        };
+        app.load_tag_styles();
+        app
     }
 
     pub fn data_version(&self) -> u64 {
@@ -57,6 +58,11 @@ impl App {
 
     pub fn changed(&self) {
         self.data_version.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Tag counts of archived memos.
+    pub fn archived_tag_counts(&self, c: &rusqlite::Connection) -> Result<Arc<Vec<(String, i64)>>, DbError> {
+        Ok(Arc::new(crate::db::memos::tag_counts(c, true)?))
     }
 
     /// Tag counts, recomputed only after a write.
@@ -68,17 +74,27 @@ impl App {
         {
             return Ok(tags.clone());
         }
-        let tags = Arc::new(crate::db::memos::tag_counts(c)?);
+        let tags = Arc::new(crate::db::memos::tag_counts(c, false)?);
         *cache = Some((v, tags.clone()));
         Ok(tags)
     }
 
+    /// The tag styles, rebuilt after a write when a pattern rule needs the known tags.
     pub fn tag_styles(&self) -> Arc<TagStyles> {
-        self.tag_styles.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        let styles = self.tag_styles.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        match styles.version {
+            Some(v) if v != self.data_version() => self.load_tag_styles(),
+            _ => styles,
+        }
     }
 
-    pub fn set_tag_meta(&self, meta: Vec<crate::db::views::TagMeta>) {
-        *self.tag_styles.lock().unwrap_or_else(|p| p.into_inner()) = Arc::new(TagStyles::new(meta));
+    pub fn load_tag_styles(&self) -> Arc<TagStyles> {
+        let v = self.data_version();
+        let loaded = self.db.blocking(|c| Ok((crate::db::views::tag_meta(c)?, crate::db::memos::all_tags(c)?)));
+        let (meta, known) = loaded.unwrap_or_default();
+        let styles = Arc::new(TagStyles::new(meta, &known, v));
+        *self.tag_styles.lock().unwrap_or_else(|p| p.into_inner()) = styles.clone();
+        styles
     }
 
     pub fn profile(&self) -> Arc<Profile> {

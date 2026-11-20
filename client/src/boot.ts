@@ -86,6 +86,8 @@ function onPopup(trigger: HTMLElement) {
       return ui().then((u) => openTemplate(trigger, "tpl-display", "bottom", "start", (p) => requestAnimationFrame(() => u.keySegmented($("[data-segmented]", p)!)), trigger.parentElement!));
     case "tags-menu":
       return openTemplate(trigger, "tpl-tags-menu", "bottom", "end");
+    case "view-menu":
+      return ui().then((u) => u.openViewMenu(trigger));
     case "search":
       return ui().then((u) => u.openSearch());
     case "reactions": {
@@ -258,6 +260,7 @@ function initPage() {
   initTagTree();
   initList(signal);
   if ($("[data-resize=sidebar]")) void ui().then((u) => u.initResize());
+  if ($("[data-highlight]")) void ui().then((u) => u.highlight(signal));
   renderStale();
   const composer = $("[data-composer=create]");
   const autofocus = location.hash === "#compose" || (first && location.pathname === `${document.body.dataset.base}/` && matchMedia("(min-width: 768px)").matches && document.activeElement === document.body);

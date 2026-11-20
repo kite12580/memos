@@ -270,10 +270,13 @@ export default function init(signal: AbortSignal) {
   });
 
   const fromHash = () => {
-    if (location.hash === "#new") {
-      openCreate();
-      history.replaceState(null, "", location.pathname);
-    }
+    const row = rows().find((r) => location.hash === `#edit-${r.dataset.view}`);
+    if (location.hash === "#new") openCreate();
+    else if (row) {
+      fill({ id: Number(row.dataset.view), name: row.dataset.name!, icon: row.dataset.icon!, query: row.dataset.query! });
+      setOpen(true);
+    } else return;
+    history.replaceState(null, "", location.pathname);
   };
   addEventListener("hashchange", fromHash, { signal });
   fromHash();
