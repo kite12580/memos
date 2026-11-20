@@ -137,8 +137,10 @@ export async function copyLink(card: HTMLElement) {
 }
 
 export async function copyContent(card: HTMLElement) {
-  const res = await request(`/f/memos/${card.dataset.card}/source`);
-  await navigator.clipboard.writeText((await res.json()).content);
+  const text = request(`/f/memos/${card.dataset.card}/source`)
+    .then((res) => res.json())
+    .then((memo) => new Blob([memo.content], { type: "text/plain" }));
+  await navigator.clipboard.write([new ClipboardItem({ "text/plain": text })]);
   toast(strings.contentCopied);
 }
 
