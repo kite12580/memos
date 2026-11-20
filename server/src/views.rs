@@ -113,10 +113,14 @@ impl Prefs {
 }
 
 /// The tag settings as the stylesheet every page carries: custom colors
-/// and the tags whose memos are blurred. A setting covers the tag's children.
+/// and the tags whose memos are blurred. Each rule is an anchored pattern;
+/// the first rule matching a tag, exact names before patterns, applies.
 #[derive(Default)]
 pub struct TagStyles {
     pub meta: Vec<TagMeta>,
+    patterns: Vec<Option<regex_lite::Regex>>,
+    /// The data version `css` was built against, when a pattern needs the known tags.
+    pub version: Option<u64>,
     pub css: String,
 }
 
@@ -124,31 +128,65 @@ fn css_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"").replace('<', "\\3c ")
 }
 
+pub fn is_pattern(rule: &str) -> bool {
+    rule.contains(['.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '\\'])
+}
+
 impl TagStyles {
-    pub fn new(meta: Vec<TagMeta>) -> TagStyles {
-        let mut css = String::new();
+    pub fn new(meta: Vec<TagMeta>, known: &[String], version: u64) -> TagStyles {
+        let patterns = meta
+            .iter()
+            .map(|m| is_pattern(&m.tag).then(|| regex_lite::Regex::new(&format!("^(?:{})$", m.tag)).ok()).flatten())
+            .collect();
+        let mut styles = TagStyles {
+            meta,
+            patterns,
+            version: None,
+            css: String::new(),
+        };
+        let mut tags: Vec<&str> = styles.meta.iter().filter(|m| !is_pattern(&m.tag)).map(|m| m.tag.as_str()).collect();
+        if styles.patterns.iter().any(Option::is_some) {
+            styles.version = Some(version);
+            tags.extend(known.iter().map(String::as_str));
+            tags.sort_unstable();
+            tags.dedup();
+        }
         let mut colored = vec![];
-        for m in meta.iter().filter(|m| !m.color.is_empty()) {
-            let t = css_string(&m.tag);
-            let sel = format!(r#".mbe-tag[data-tag="{t}"],.mbe-tag[data-tag^="{t}/"]"#);
-            css.push_str(&format!("{sel}{{--tag-color:{}}}", m.color));
+        for tag in tags {
+            let Some(m) = styles.find(tag).filter(|m| !m.color.is_empty()) else { continue };
+            let sel = format!(r#".mbe-tag[data-tag="{}"]"#, css_string(tag));
+            styles.css.push_str(&format!("{sel}{{--tag-color:{}}}", m.color));
             colored.push(sel);
         }
         if !colored.is_empty() {
             let sel = colored.join(",");
-            css.push_str(&format!(
+            styles.css.push_str(&format!(
                 ":is({sel}):not(.mbe-source-mode *){{--tag-tint:color(from oklch(from var(--tag-color) clamp(0.5,l,0.75) c h) srgb clamp(0,r,1) clamp(0,g,1) clamp(0,b,1));background-color:color-mix(in srgb,var(--tag-tint) 18%,transparent)}}\
                  :is({sel})[role=button]:not(.mbe-source-mode *):hover{{background-color:color-mix(in srgb,var(--tag-tint) 26%,transparent)}}"
             ));
         }
-        TagStyles { meta, css }
+        styles
+    }
+
+    /// The rule for `tag`: its exact name, else the first pattern it matches.
+    pub fn find(&self, tag: &str) -> Option<&TagMeta> {
+        self.meta.iter().find(|m| m.tag == tag).or_else(|| {
+            self.meta
+                .iter()
+                .zip(&self.patterns)
+                .find(|(_, re)| re.as_ref().is_some_and(|re| re.is_match(tag)))
+                .map(|(m, _)| m)
+        })
     }
 
     /// Whether a memo, by the tags in its HTML, is one to blur.
     pub fn blurs(&self, html: &str) -> bool {
-        self.meta.iter().any(|m| {
-            let t = h::escape(&m.tag);
-            m.blur && (html.contains(&format!("data-tag=\"{t}\"")) || html.contains(&format!("data-tag=\"{t}/")))
+        if !self.meta.iter().any(|m| m.blur) {
+            return false;
+        }
+        html.split("data-tag=\"").skip(1).any(|rest| {
+            let tag = crate::content::unescape(rest.split('"').next().unwrap_or_default());
+            self.find(&tag).is_some_and(|m| m.blur)
         })
     }
 }
@@ -272,6 +310,8 @@ impl Ctx<'_> {
             "showLess": t.s("memo.show-less"),
             "tasksUpdated": t.s("memo.task-actions.updated"),
             "newBadge": t.s("memo.new-badge"),
+            "viewDeleteConfirm": t.s("setting.memo-view.delete-confirm"),
+            "viewDeleted": t.s("setting.memo-view.delete-success"),
         })
         .to_string()
         .replace('<', "\\u003c")
@@ -935,6 +975,22 @@ pub struct FilterChip {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tag_rules() {
+        let rule = |tag: &str, color: &str, blur| TagMeta { tag: tag.into(), color: color.into(), blur };
+        let known = ["work".to_string(), "work/a".into(), "home".into(), "secret/x".into()];
+        let s = TagStyles::new(vec![rule("secret/.*", "", true), rule("work", "#ff0000", false), rule("work/.*", "#00ff00", false)], &known, 7);
+        assert_eq!(s.find("work").map(|m| m.color.as_str()), Some("#ff0000"));
+        assert_eq!(s.find("work/a").map(|m| m.color.as_str()), Some("#00ff00"));
+        assert!(s.find("home").is_none() && s.find("workx").is_none());
+        assert!(s.css.contains(r#".mbe-tag[data-tag="work/a"]{--tag-color:#00ff00}"#));
+        assert!(!s.css.contains("home"));
+        assert!(s.blurs(r#"<span class="mbe-tag" data-tag="secret/x">"#));
+        assert!(!s.blurs(r#"<span class="mbe-tag" data-tag="secret">"#));
+        assert_eq!(s.version, Some(7));
+        assert_eq!(TagStyles::new(vec![rule("work", "#ff0000", false)], &known, 7).version, None);
+    }
 
     #[test]
     fn times() {

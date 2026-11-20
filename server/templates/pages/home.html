@@ -9,7 +9,7 @@
 {%- if !heading.is_empty() %}
 <div class="mb-3 flex w-full items-center gap-2 px-1"><h1 class="mu-title text-mu-text">{{ heading }}</h1></div>
 {%- endif %}
-<div id="memo-list" data-layout="{{ c.prefs.layout }}"{% if c.prefs.full_width %} data-full=""{% endif %} data-list="{{ list_url }}">
+<div id="memo-list" data-layout="{{ c.prefs.layout }}"{% if c.prefs.full_width %} data-full=""{% endif %} data-list="{{ list_url }}"{% if !highlight.is_empty() %} data-highlight="{{ highlight }}"{% endif %}>
 <div data-leading="" class="flex w-full flex-col">
 {%- if let Some(composer) = composer %}
 {% include "partials/composer.html" %}

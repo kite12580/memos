@@ -68,6 +68,7 @@
 <div class="flex flex-wrap gap-1 px-4 pb-3" data-search-hints="">{% for hint in crate::views::SEARCH_HINTS %}<button type="button" data-action="search-hint" data-value="{{ hint }}" class="mu-button mu-button-ghost mu-base mu-s-xs mu-focus font-mono">{{ hint }}</button>{% endfor %}</div>
 </form>
 </div></div></template>
+<template id="tpl-view-row-menu"><div role="menu" class="mu-menu-popup mu-popup mu-popup-motion mu-base mu-s-sm"><div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption" data-view-action="edit"><span class="mu-menu-label">{{ c.t.s("common.edit") }}</span></div><div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption mu-menu-item-danger" data-view-action="delete"><span class="mu-menu-label">{{ c.t.s("common.delete") }}</span></div></div></template>
 <template id="tpl-confirm"><div class="mu-dialog-backdrop" data-open="" role="presentation" aria-hidden="true"></div><div data-open="" role="presentation" class="mu-dialog-viewport mu-dialog-sheet"><div data-open="" role="alertdialog" class="mu-dialog-popup mu-alert-dialog-popup mu-popup mu-base mu-s-md">
 <h2 class="mu-dialog-title mu-title" data-slot="title"></h2>
 <p class="mu-dialog-description mu-body" data-slot="description"></p>

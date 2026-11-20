@@ -1,9 +1,9 @@
 // Loaded on demand so it stays out of the first page's script budget.
 
-import { $, $$, fromHTML, post, reload as softReload, request, strings } from "./lib/dom";
+import { $, $$, base, fromHTML, go, post, reload as softReload, request, strings } from "./lib/dom";
 import { formatTimes } from "./lib/time";
-import { enter, openDialog, openPopup, restore, snapshot } from "./lib/popup";
-import { toastError } from "./lib/toast";
+import { closeAll, closeLayer, enter, openDialog, openPopup, openTemplate, restore, snapshot } from "./lib/popup";
+import { toast, toastError } from "./lib/toast";
 import { icon } from "./lib/icon";
 
 export async function setPref(key: string, value: string, reload = true) {
@@ -285,3 +285,100 @@ export function initResize() {
   });
 }
 
+
+export function openViewMenu(trigger: HTMLElement) {
+  const { viewId: view, name } = trigger.dataset as { viewId: string; name: string };
+  openTemplate(trigger, "tpl-view-row-menu", "bottom", "end", (menu) =>
+    menu.addEventListener("click", (e) => {
+      const action = (e.target as HTMLElement).closest<HTMLElement>("[data-view-action]")?.dataset.viewAction;
+      if (!action) return;
+      closeAll();
+      if (action === "edit") return go(`${base}/views#edit-${view}`);
+      openDialog("tpl-confirm", (root) => {
+        $("[data-slot=title]", root)!.textContent = strings.viewDeleteConfirm.replace("{{title}}", name);
+        $("[data-slot=description]", root)!.remove();
+        $("[data-slot=ok]", root)!.textContent = strings.delete;
+        $("[data-action=dialog-ok]", root)!.addEventListener("click", async () => {
+          closeLayer(root);
+          try {
+            await post(`/views/${view}/delete`);
+            toast(strings.viewDeleted.replace("{{title}}", name));
+            const url = new URL(location.href);
+            if (url.searchParams.get("view") !== view) return void softReload();
+            url.searchParams.delete("view");
+            go(url.href);
+          } catch (e) {
+            toastError(e);
+          }
+        });
+      });
+    }),
+  );
+}
+
+const fold = (text: string) => {
+  let folded = "";
+  const offsets: number[] = [];
+  let at = 0;
+  for (const ch of text) {
+    const f = ch.toUpperCase().toLowerCase();
+    for (let i = 0; i < f.length; i++) offsets.push(at);
+    folded += f;
+    at += ch.length;
+  }
+  offsets.push(at);
+  return { folded, offsets };
+};
+
+function matches(text: string, terms: string[]) {
+  const { folded, offsets } = fold(text);
+  const hits: [number, number][] = [];
+  for (const term of terms) {
+    for (let from = folded.indexOf(term); from !== -1; from = folded.indexOf(term, from + 1)) {
+      let end = from + term.length;
+      while (end < folded.length && offsets[end] === offsets[end - 1]) end++;
+      hits.push([offsets[from], offsets[end]]);
+    }
+  }
+  hits.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const merged: [number, number][] = [];
+  for (const hit of hits) {
+    const last = merged[merged.length - 1];
+    if (last && hit[0] <= last[1]) last[1] = Math.max(last[1], hit[1]);
+    else merged.push(hit);
+  }
+  return merged;
+}
+
+/** Paints the search's words in memo bodies with the CSS Custom Highlight API, as memos does. */
+export function highlight(signal: AbortSignal) {
+  const list = $("[data-highlight]");
+  if (!list || typeof Highlight !== "function") return;
+  const terms = [...new Set((JSON.parse(list.dataset.highlight!) as string[]).map((w) => fold(w.trim()).folded).filter(Boolean))];
+  const paint = new Highlight();
+  CSS.highlights.set("memo-search-match", paint);
+  let frame = 0;
+  const apply = () => {
+    frame = 0;
+    paint.clear();
+    for (const body of $$(".memo-content-root", list)) {
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+        for (const [start, end] of matches(node.data, terms)) {
+          const range = document.createRange();
+          range.setStart(node, start);
+          range.setEnd(node, end);
+          paint.add(range);
+        }
+      }
+    }
+  };
+  apply();
+  const watch = new MutationObserver(() => (frame ||= requestAnimationFrame(apply)));
+  watch.observe(list, { childList: true, characterData: true, subtree: true });
+  signal.addEventListener("abort", () => {
+    watch.disconnect();
+    cancelAnimationFrame(frame);
+    CSS.highlights.delete("memo-search-match");
+  });
+}

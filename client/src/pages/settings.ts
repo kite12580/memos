@@ -26,10 +26,31 @@ export default function init(_signal: AbortSignal) {
     let popup: HTMLElement | null = null;
     let nav: ListNav | null = null;
     const options = () => $$("[role=option]", popup!).filter((o) => !o.hidden);
+    const fold = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+    const named = (code: string, lang: string) => {
+      try {
+        return new Intl.DisplayNames([lang], { type: "language" }).of(code) ?? "";
+      } catch {
+        return "";
+      }
+    };
+    const labels = (o: HTMLElement) =>
+      (o.dataset.search ??= fold([o.textContent, named(o.dataset.lang!, "en"), named(o.dataset.lang!, document.documentElement.lang)].join("\n")));
     const filter = () => {
-      const q = input.value.trim().toLowerCase();
+      const q = fold(input.value.trim());
       const all = q && input.value !== current;
-      for (const o of $$("[role=option]", popup!)) o.hidden = !!all && !o.textContent!.toLowerCase().includes(q);
+      for (const o of $$("[role=option]", popup!)) o.hidden = !!all && !labels(o).includes(q);
+      const empty = popup!.firstElementChild!;
+      empty.replaceChildren();
+      if (!options().length) {
+        const link = document.createElement("a");
+        link.className = "mu-link mu-focus";
+        link.href = group.dataset.feedback!;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = group.dataset.feedbackLabel!;
+        empty.append(link);
+      }
       nav!.highlight(options().find((o) => o.hasAttribute("data-selected") || all));
     };
     const open = () => {
@@ -84,6 +105,15 @@ export default function init(_signal: AbortSignal) {
     (el as HTMLButtonElement).disabled = off;
     el.toggleAttribute("data-disabled", off);
   };
+
+  function validPattern(pattern: string) {
+    try {
+      new RegExp(pattern);
+    } catch {
+      return false;
+    }
+    return !/\((?:[^()]*[*+?{][^()]*)\)[*+?{]/.test(pattern);
+  }
 
   function initTags() {
     const section = $("[data-tags]", root)!;
@@ -146,16 +176,20 @@ export default function init(_signal: AbortSignal) {
     add.addEventListener("click", () => {
       const tag = name.value.trim().replace(/^#/, "");
       if (!tag) return;
-      if (rows().some((r) => r.dataset.rule === tag)) {
+      const problem = rows().some((r) => r.dataset.rule === tag)
+        ? section.dataset.exists!
+        : !validPattern(tag)
+          ? section.dataset.invalidRegex!
+          : "";
+      if (problem) {
         const field = $("[data-new-field]", section)!;
         field.setAttribute("data-invalid", "");
-        if (!$("[data-new-error]", field)) {
-          const error = document.createElement("div");
-          error.className = "mu-field-error mu-caption";
-          error.dataset.newError = "";
-          error.textContent = section.dataset.exists!;
-          field.append(error);
-        }
+        $("[data-new-error]", field)?.remove();
+        const error = document.createElement("div");
+        error.className = "mu-field-error mu-caption";
+        error.dataset.newError = "";
+        error.textContent = problem;
+        field.append(error);
         return;
       }
       const row = fromTemplate("tpl-tag-rule")!.firstElementChild as HTMLElement;

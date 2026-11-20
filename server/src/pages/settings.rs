@@ -172,13 +172,23 @@ pub async fn settings(app: &Arc<App>, req: &Request) -> Response {
     let app2 = app.clone();
     let data = app
         .db
-        .with(move |conn| Ok((app2.tag_counts(conn)?, counts(conn)?)))
+        .with(move |conn| Ok((app2.tag_counts(conn)?, counts(conn)?, crate::db::memos::tagged(conn)?)))
         .await;
-    let (tag_counts, (memos, attachments, bytes, db)) = match data {
+    let (tag_counts, (memos, attachments, bytes, db), tagged) = match data {
         Ok(d) => d,
         Err(e) => return e.into(),
     };
-    let count_of = |tag: &str| tag_counts.iter().find(|(t, _)| t == tag).map_or(0, |(_, n)| *n);
+    let count_of = |rule: &str| {
+        let pattern = crate::views::is_pattern(rule).then(|| regex_lite::Regex::new(&format!("^(?:{rule})$")).ok()).flatten();
+        match pattern {
+            Some(re) => {
+                let ids: std::collections::HashSet<i64> =
+                    tagged.iter().filter(|(t, _)| t == rule || re.is_match(t)).map(|(_, id)| *id).collect();
+                ids.len() as i64
+            }
+            None => tag_counts.iter().find(|(t, _)| t == rule).map_or(0, |(_, n)| *n),
+        }
+    };
     let tags: Vec<TagSetting> = c
         .tags
         .meta
