@@ -56,6 +56,7 @@ pub struct Assets {
     pub preload: Vec<String>,
     pub render_version: String,
     pub favicon: Bytes,
+    pub touch_icon: Bytes,
 }
 
 impl Assets {
@@ -95,6 +96,7 @@ impl Assets {
                 .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
                 .unwrap_or_default(),
             favicon: std::fs::read(dir.join("favicon.svg")).unwrap_or_default().into(),
+            touch_icon: std::fs::read(dir.join("apple-touch-icon.png")).unwrap_or_default().into(),
         })
     }
 

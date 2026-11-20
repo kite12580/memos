@@ -218,6 +218,10 @@ impl App {
                 .with("content-type", "image/svg+xml")
                 .with("cache-control", "public, max-age=86400")
                 .body(self.assets.favicon.clone()),
+            (true, _, ["apple-touch-icon.png"]) => Response::new(200)
+                .with("content-type", "image/png")
+                .with("cache-control", "public, max-age=86400")
+                .body(self.assets.touch_icon.clone()),
             (true, _, ["healthz"]) => Response::text(200, "ok"),
             (_, _, ["api", "memos", ..]) => api::handle(self, req).await,
             (true, _, _) => pages::not_found(self, &req),

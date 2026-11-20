@@ -155,7 +155,7 @@ const mark = readFileSync(join(root, "src/memos-mark.svg"), "utf8").trim();
 const sprite = `<svg xmlns="http://www.w3.org/2000/svg">${symbols.join("")}${mark}</svg>`;
 const spriteName = `icons-${hash(sprite)}.svg`;
 writeFileSync(join(assets, spriteName), sprite);
-writeFileSync(join(dist, "favicon.svg"), readFileSync(join(root, "public/favicon.svg")));
+for (const name of ["favicon.svg", "apple-touch-icon.png"]) writeFileSync(join(dist, name), readFileSync(join(root, "public", name)));
 
 for (const name of readdirSync(assets)) {
   if (!/\.(js|css|svg|json|wasm|map)$/.test(name)) continue;

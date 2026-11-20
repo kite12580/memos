@@ -9,6 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 {%- if c.profile.logo.is_empty() %}
+<link rel="apple-touch-icon" sizes="180x180" href="{{ c.base }}/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="{{ c.base }}/favicon.svg">
 {%- else %}
 <link rel="icon" href="{{ c.profile.logo }}">
