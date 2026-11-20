@@ -5,7 +5,7 @@ import { Editor, fileHandler, matchToken, scanTags, suggestion } from "@usememos
 import { emoji } from "@usememos/editor/emoji";
 import { $, $$, fromHTML, post, request } from "../lib/dom";
 import { icon } from "../lib/icon";
-import { closeAll, openPopup } from "../lib/popup";
+import { closeAll, closeLayer, openDialog, openPopup } from "../lib/popup";
 import { formatTimes } from "../lib/time";
 import { toastError } from "../lib/toast";
 import { articleOf, fresh, initClamps, markFresh, replaceCard } from "../lib/cards";
@@ -52,7 +52,9 @@ const SOURCE_KEY = "memos-lite-source-mode";
 
 const draftKey = (composer: HTMLElement) => {
   const mode = composer.dataset.composer;
-  return mode === "create" ? "memos-lite-draft" : mode === "comment" ? `memos-lite-draft:${composer.dataset.parent}` : null;
+  if (mode === "create") return "memos-lite-draft";
+  if (mode === "global") return "memos-lite-draft:global";
+  return mode === "comment" ? `memos-lite-draft:${composer.dataset.parent}` : null;
 };
 
 /** One open editor: the composer, a comment composer, or a card being edited. */
@@ -65,6 +67,7 @@ export class Session {
   uid?: string;
   rev?: number;
   saving = false;
+  hosted?: () => void;
 
   constructor(readonly el: HTMLElement, readonly onDone: (html: string, saved: Saved) => void, readonly onCancel?: () => void) {}
 
@@ -272,6 +275,7 @@ export class Session {
 
   toggleFocus() {
     const on = !this.el.hasAttribute("data-focus-mode");
+    const exit = () => (this.hosted ? this.hosted() : this.toggleFocus());
     const apply = () => {
       this.el.toggleAttribute("data-focus-mode", on);
       if (on) {
@@ -292,8 +296,9 @@ export class Session {
         backdrop.className = "fixed inset-0 bg-mu-overlay backdrop-blur-sm z-(--mu-layer-overlay)";
         backdrop.setAttribute("aria-label", t("editor.exit-focus-mode"));
         backdrop.dataset.focusBackdrop = "";
-        backdrop.addEventListener("click", () => this.toggleFocus());
-        this.el.before(backdrop, placeholder);
+        backdrop.addEventListener("click", exit);
+        this.el.before(backdrop);
+        if (!this.hosted) this.el.before(placeholder);
         const header = $("[data-timestamp]", this.el)?.parentElement;
         if (header) header.classList.replace("h-6", "h-10");
         else {
@@ -308,9 +313,9 @@ export class Session {
         const exitRow = (header ?? $("[data-focus-header]", this.el))!;
         exitRow.insertAdjacentHTML(
           "beforeend",
-          `<div class="ms-auto -me-2" data-focus-exit=""><button type="button" aria-label="${t("editor.exit-focus-mode")}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus">${icon("minimize-2", "")}</button></div>`,
+          `<div class="ms-auto -me-2" data-focus-exit=""><button type="button" aria-label="${this.hosted ? t("common.close") : t("editor.exit-focus-mode")}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus">${this.hosted ? icon("x", "") : icon("minimize-2", "")}</button></div>`,
         );
-        $("[data-focus-exit] button", this.el)!.addEventListener("click", () => this.toggleFocus());
+        $("[data-focus-exit] button", this.el)!.addEventListener("click", exit);
       } else {
         for (const el of $$("[data-focus-backdrop], [data-focus-placeholder]")) el.remove();
         $("[data-focus-header]", this.el)?.remove();
@@ -320,7 +325,7 @@ export class Session {
       this.editor.setOptions({ theme: on ? MEMO_FOCUS_EDITOR_THEME : MEMO_EDITOR_THEME });
     };
     const height = this.el.getBoundingClientRect().height;
-    if (document.startViewTransition) {
+    if (document.startViewTransition && !this.hosted) {
       this.el.style.viewTransitionName = "memo-focus-mode";
       document.startViewTransition(apply).finished.finally(() => (this.el.style.viewTransitionName = ""));
     } else apply();
@@ -356,7 +361,7 @@ function insertCard(html: string, composer: HTMLElement) {
     compose.before(card);
     holder.hidden = true;
     compose.hidden = false;
-  } else {
+  } else if (composer.dataset.composer === "create" || $("[data-composer=create]")) {
     $("#memo-list [data-empty]")?.remove();
     card.dataset.i = "0.5";
     $("#memo-list [data-leading]")?.after(card);
@@ -391,14 +396,16 @@ async function start(composer: HTMLElement, focus: boolean) {
     insertCard(html, composer);
     session.reset(saved);
     if (composer.dataset.composer === "comment") showCommentComposer(false);
+    session.hosted?.();
     void refreshChrome();
   });
+  session.hosted = hosts.get(composer);
   sessions.set(composer, session);
   session.mount([draft.trim(), typed].filter(Boolean).join("\n\n"), focus || composer.contains(document.activeElement));
   composer.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
     if (target.closest("[data-action=save]")) void session.save();
-    else if (target.closest("[data-cancel]")) showCommentComposer(false);
+    else if (target.closest("[data-cancel]")) (session.hosted ?? (() => showCommentComposer(false)))();
   });
   return session;
 }
@@ -417,6 +424,23 @@ export async function openComment() {
   showCommentComposer(true);
   holder.scrollIntoView({ behavior: "smooth", block: "center" });
   (await activate(composer)).editor.focus();
+}
+
+const hosts = new WeakMap<HTMLElement, () => void>();
+
+export async function openGlobal() {
+  const res = await request("/f/composer").catch(toastError);
+  if (!res) return;
+  const frag = fromHTML(
+    `<div class="fixed inset-0 z-(--mu-layer-overlay) bg-transparent" role="presentation"></div><div role="dialog" aria-modal="true" aria-labelledby="new-memo-title" class="fixed inset-0 z-(--mu-layer-overlay) outline-none"><h2 id="new-memo-title" class="mu-visually-hidden">${t("editor.new-memo")}</h2>${await res.text()}</div>`,
+  );
+  const composer = frag.querySelector<HTMLElement>("[data-composer]")!;
+  let session: Session | undefined;
+  const root = openDialog(frag, undefined, () => session?.destroy());
+  if (!root) return;
+  hosts.set(composer, () => closeLayer(root));
+  session = await activate(composer);
+  session.toggleFocus();
 }
 
 /** Edits a card in place, as memos does: the card's body becomes the editor until saved or cancelled. */
@@ -509,7 +533,7 @@ export async function openInsertMenu(trigger: HTMLElement) {
     menuItem("record", "mic", t("editor.audio-recorder.trigger")) +
     menuItem("link", "link", t("editor.insert-menu.link-memo")) +
     '<div role="separator" class="mu-menu-separator"></div>' +
-    menuItem("focus", "maximize-2", t("editor.focus-mode")) +
+    (session.hosted ? "" : menuItem("focus", "maximize-2", t("editor.focus-mode"))) +
     `<div ${source ? "data-checked" : "data-unchecked"}="" role="menuitemcheckbox" aria-checked="${source}" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption mu-menu-checkbox-item" data-insert="source"><span class="mu-option-icon" aria-hidden="true">${icon("code-xml", "")}</span><span class="mu-menu-label">${t("editor.markdown-mode")}</span><span class="mu-menu-indicator">${source ? icon("check", "") : ""}</span></div>`;
   popup.addEventListener("click", async (e) => {
     const item = (e.target as HTMLElement).closest<HTMLElement>("[data-insert]");

@@ -47,6 +47,10 @@ impl Composer {
         }
     }
 
+    pub fn global(c: &Ctx) -> Composer {
+        Composer { mode: "global", ..Composer::new(c) }
+    }
+
     pub fn comment(c: &Ctx, parent: &str) -> Composer {
         Composer {
             mode: "comment",
@@ -111,6 +115,19 @@ struct ListFragment<'a> {
 struct CardFragment<'a> {
     c: Ctx<'a>,
     card: Card,
+}
+
+#[derive(Template)]
+#[template(source = "{% include \"partials/composer.html\" %}", ext = "html")]
+struct ComposerFragment<'a> {
+    c: Ctx<'a>,
+    composer: Composer,
+}
+
+pub fn composer_fragment(app: &Arc<App>, req: &Request) -> Response {
+    let c = app.ctx(req);
+    let composer = Composer::global(&c);
+    html(&ComposerFragment { c, composer })
 }
 
 #[derive(Template)]

@@ -176,6 +176,7 @@ impl App {
             (true, _, ["settings"]) => pages::settings(self, &req).await,
             (true, _, ["f", "memos"]) => pages::list_fragment(self, &req).await,
             (true, _, ["f", "month"]) => pages::month_fragment(self, &req).await,
+            (true, _, ["f", "composer"]) => pages::composer_fragment(self, &req),
             (true, _, ["f", "day"]) => pages::day_fragment(self, &req).await,
             (true, _, ["f", "memos", uid]) => pages::card_fragment(self, &req, uid).await,
             (true, _, ["f", "memos", uid, "source"]) => pages::source(self, uid).await,

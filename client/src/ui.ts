@@ -186,25 +186,7 @@ export async function showMonth(button: HTMLElement) {
   }
 }
 
-export function preview(el: HTMLElement) {
-  const src = el.dataset.src!;
-  if (el.hasAttribute("data-video")) {
-    window.open(src, "_blank");
-    return;
-  }
-  const overlay = document.createElement("div");
-  overlay.className = "fixed inset-0 z-50 flex items-center justify-center bg-black/92 cursor-zoom-out";
-  overlay.innerHTML = '<img class="max-h-[calc(100dvh-8rem)] max-w-[calc(100vw-1.5rem)] rounded-mu-md object-contain select-none sm:max-h-[calc(100dvh-7rem)] sm:max-w-[calc(100vw-8rem)]" alt="">';
-  overlay.querySelector("img")!.src = src;
-  const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-  const close = () => {
-    overlay.remove();
-    removeEventListener("keydown", onKey);
-  };
-  overlay.addEventListener("click", close);
-  addEventListener("keydown", onKey);
-  document.body.append(overlay);
-}
+export const preview = (el: HTMLElement) => import("./preview").then((m) => m.openPreview(el));
 
 const COPIED_ICON =
   '<svg class="mbe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg>';

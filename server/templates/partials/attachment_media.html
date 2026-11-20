@@ -4,7 +4,7 @@
 <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
 {%- for a in g.items %}
 <article class="overflow-hidden rounded-[20px] border border-mu-line/60 bg-mu-canvas/90">
-<div class="relative block w-full cursor-pointer text-left" data-action="preview" data-src="{{ a.href }}"{% if a.is_video() %} data-video=""{% endif %}><div class="relative aspect-[5/4] overflow-hidden bg-mu-well/40">
+<div class="relative block w-full cursor-pointer text-left" data-action="preview" data-src="{{ a.href }}" data-name="{{ a.name }}"{% if a.is_video() %} data-video=""{% endif %}><div class="relative aspect-[5/4] overflow-hidden bg-mu-well/40">
 {%- if a.is_video() %}{% if a.thumb.is_empty() %}<video src="{{ a.href }}" preload="metadata" muted playsinline class="h-full w-full object-cover"></video>{% else %}<img src="{{ a.thumb }}" alt="{{ a.name }}" class="h-full w-full object-cover" loading="lazy" decoding="async">{% endif %}<div class="absolute inset-0 bg-linear-to-t from-black/35 via-black/5 to-transparent"></div><span class="absolute bottom-2.5 right-2.5 inline-flex h-8 items-center justify-center rounded-full bg-mu-canvas/85 text-mu-text backdrop-blur-sm w-8">{{ h::icon("play", "mu-icon-sm fill-current") }}</span>
 {%- else %}<img src="{{ a.thumb }}" alt="{{ a.name }}" class="h-full w-full object-cover" loading="lazy" decoding="async">{% endif -%}
 </div></div>
