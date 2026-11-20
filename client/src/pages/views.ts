@@ -2,7 +2,7 @@
 
 import { $, $$, post, reload } from "../lib/dom";
 import { icon } from "../lib/icon";
-import { closeAll, closeDialog, isOpenFor, openDialog, openTemplate } from "../lib/popup";
+import { closeAll, closeDialog, isOpenFor, listNav, openDialog, openTemplate } from "../lib/popup";
 import { toast, toastError } from "../lib/toast";
 
 export default function init(signal: AbortSignal) {
@@ -182,15 +182,7 @@ export default function init(signal: AbortSignal) {
     const value = picker.dataset.value ?? "";
     let tab = value && !value.startsWith("lucide:") ? "emoji" : "icons";
     reset.classList.toggle("invisible", !value);
-    let highlighted = -1;
-
     const cells = () => $$("[data-icon]", gridEl).filter((c) => !c.hidden);
-    const highlight = (i: number) => {
-      const all = cells();
-      all.forEach((c, j) => c.toggleAttribute("data-highlighted", j === i));
-      highlighted = i;
-      all[i]?.scrollIntoView({ block: "nearest" });
-    };
 
     const render = () => {
       const q = search.value.trim().toLowerCase();
@@ -213,7 +205,7 @@ export default function init(signal: AbortSignal) {
       }
       gridEl.replaceChildren(...rowsEl);
       empty.textContent = items.length ? "" : empty.dataset.empty!;
-      highlight(items.length && search.value ? 0 : -1);
+      nav.highlight(search.value ? items[0] : undefined);
     };
 
     const setTab = (next: string) => {
@@ -242,6 +234,7 @@ export default function init(signal: AbortSignal) {
       closeAll();
       picker.focus();
     };
+    const nav = listNav(gridEl, search, cells, (c) => c && choose(c.dataset.icon!), { steps: { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 8, ArrowUp: -8 } });
 
     popup.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
@@ -252,17 +245,6 @@ export default function init(signal: AbortSignal) {
       if (cell) choose(cell.dataset.icon!);
     });
     search.addEventListener("input", render);
-    search.addEventListener("keydown", (e) => {
-      const all = cells();
-      const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 8, ArrowUp: -8 }[e.key];
-      if (step && all.length) {
-        e.preventDefault();
-        highlight(Math.min(all.length - 1, Math.max(0, highlighted + step)));
-      } else if (e.key === "Enter" && all[highlighted]) {
-        e.preventDefault();
-        choose(all[highlighted].dataset.icon!);
-      }
-    });
     requestAnimationFrame(() => {
       setTab(tab);
       search.focus();

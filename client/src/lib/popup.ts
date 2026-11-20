@@ -13,9 +13,56 @@ const stack: Layer[] = [];
 const GAP = 6;
 const ITEM = ':is([role^="menuitem"], [role="option"])[tabindex]';
 
-function highlight(layer: HTMLElement, item: HTMLElement | null) {
-  for (const el of layer.querySelectorAll(`${ITEM}[data-highlighted]`)) if (el !== item) el.removeAttribute("data-highlighted");
+function highlight(scope: HTMLElement, item: HTMLElement | undefined, among = "*") {
+  for (const el of scope.querySelectorAll(`:is(${among})[data-highlighted]`)) if (el !== item) el.removeAttribute("data-highlighted");
   item?.setAttribute("data-highlighted", "");
+}
+
+export interface ListNav {
+  highlight(item: HTMLElement | undefined, scroll?: boolean): void;
+  current(): HTMLElement | undefined;
+}
+
+/**
+ * A list whose `input` keeps focus while its `items` highlight under the pointer and with
+ * the `steps` keys. Enter calls `pick` with the highlighted item.
+ */
+export function listNav(
+  list: HTMLElement,
+  input: HTMLElement,
+  items: () => HTMLElement[],
+  pick: (item: HTMLElement | undefined) => void,
+  { signal, steps = { ArrowDown: 1, ArrowUp: -1 } }: { signal?: AbortSignal; steps?: Partial<Record<string, number>> } = {},
+): ListNav {
+  let current: HTMLElement | undefined;
+  const nav: ListNav = {
+    highlight(item, scroll = true) {
+      current = item;
+      highlight(list, item);
+      if (scroll) item?.scrollIntoView({ block: "nearest" });
+    },
+    current: () => (current?.isConnected ? current : undefined),
+  };
+  list.addEventListener("pointerover", (e) => nav.highlight(items().find((i) => i.contains(e.target as Node)), false), { signal });
+  input.addEventListener(
+    "keydown",
+    (e) => {
+      const step = steps[e.key];
+      const all = items();
+      if (step && all.length) {
+        const at = all.indexOf(nav.current()!);
+        nav.highlight(all[Math.min(all.length - 1, Math.max(0, at + step))]);
+      } else if (e.key === "Enter") {
+        const item = nav.current();
+        pick(item);
+        if (!item) return;
+      } else return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    { signal },
+  );
+  return nav;
 }
 
 function onPointerOver(e: PointerEvent) {
@@ -24,7 +71,7 @@ function onPointerOver(e: PointerEvent) {
   if (!layer) return;
   const item = t.closest<HTMLElement>(ITEM);
   if (item?.hasAttribute("data-disabled")) return;
-  highlight(layer.el, item);
+  highlight(layer.el, item ?? undefined, ITEM);
   item?.focus({ preventScroll: true });
 }
 
@@ -162,13 +209,13 @@ function onKey(e: KeyboardEvent) {
     return;
   }
   const top = stack[stack.length - 1].el;
-  const items = [...top.querySelectorAll<HTMLElement>('[role^="menuitem"], [role="option"]')].filter((i) => !i.hidden);
+  const items = [...top.querySelectorAll<HTMLElement>(ITEM)].filter((i) => !i.hidden);
   if (!items.length) return;
   const at = items.indexOf(document.activeElement as HTMLElement);
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     const next = items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length];
     next.focus();
-    highlight(top, next);
+    highlight(top, next, ITEM);
     e.preventDefault();
   } else if ((e.key === "Enter" || e.key === " ") && at >= 0) {
     items[at].click();

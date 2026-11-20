@@ -2,7 +2,7 @@
 // box over the emoji grid, eight to a row, drawing only the rows in view.
 
 import { icon } from "./lib/icon";
-import { closeAll, openPopup } from "./lib/popup";
+import { closeAll, listNav, openPopup } from "./lib/popup";
 import { findEmoji } from "./memos/emoji";
 import { ready, t } from "./editor/strings";
 
@@ -49,22 +49,15 @@ export async function openPicker(trigger: HTMLElement, reacted: string[], pick: 
     draw();
   });
   list.addEventListener("scroll", draw, { passive: true });
-  list.addEventListener("pointerover", (e) => {
-    for (const c of list.querySelectorAll("[data-highlighted]")) c.removeAttribute("data-highlighted");
-    (e.target as HTMLElement).closest("[data-emoji]")?.setAttribute("data-highlighted", "");
-  });
   list.addEventListener("click", (e) => {
-    const cell = (e.target as HTMLElement).closest<HTMLElement>("[data-emoji]");
-    if (!cell) return;
+    choose((e.target as HTMLElement).closest<HTMLElement>("[data-emoji]")?.dataset.emoji);
+  });
+  const choose = (emoji: string | undefined) => {
+    if (!emoji) return;
     closeAll();
-    pick(cell.dataset.emoji!);
-  });
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && options[0]) {
-      closeAll();
-      pick(options[0].emoji);
-    }
-  });
+    pick(emoji);
+  };
+  listNav(list, input, () => [...canvas.querySelectorAll<HTMLElement>("[data-emoji]")], (c) => choose(c?.dataset.emoji ?? options[0]?.emoji), { steps: {} });
   openPopup(trigger, popup, "bottom", "start");
   draw();
   input.focus({ preventScroll: true });

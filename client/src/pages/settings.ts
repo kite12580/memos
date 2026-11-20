@@ -3,7 +3,7 @@
 
 import { $, $$, fromTemplate, post, reload } from "../lib/dom";
 import { icon } from "../lib/icon";
-import { closeAll, openDialog, openPopup } from "../lib/popup";
+import { closeAll, type ListNav, listNav, openDialog, openPopup } from "../lib/popup";
 import { toastError } from "../lib/toast";
 
 export default function init(_signal: AbortSignal) {
@@ -24,18 +24,13 @@ export default function init(_signal: AbortSignal) {
     const template = group.parentElement!.querySelector<HTMLTemplateElement>("template[data-languages]")!;
     const current = input.value;
     let popup: HTMLElement | null = null;
-    let highlighted = -1;
+    let nav: ListNav | null = null;
     const options = () => $$("[role=option]", popup!).filter((o) => !o.hidden);
-    const highlight = (i: number) => {
-      options().forEach((o, j) => o.toggleAttribute("data-highlighted", j === i));
-      highlighted = i;
-      options()[i]?.scrollIntoView({ block: "nearest" });
-    };
     const filter = () => {
       const q = input.value.trim().toLowerCase();
       const all = q && input.value !== current;
       for (const o of $$("[role=option]", popup!)) o.hidden = !!all && !o.textContent!.toLowerCase().includes(q);
-      highlight(options().findIndex((o) => o.hasAttribute("data-selected") || all));
+      nav!.highlight(options().find((o) => o.hasAttribute("data-selected") || all));
     };
     const open = () => {
       if (popup) return;
@@ -50,7 +45,10 @@ export default function init(_signal: AbortSignal) {
         const option = (e.target as HTMLElement).closest<HTMLElement>("[data-lang]");
         if (option) void setPref("lang", option.dataset.lang!);
       });
+      const closed = new AbortController();
+      nav = listNav(popup.lastElementChild as HTMLElement, input, options, (o) => o && void setPref("lang", o.dataset.lang!), { signal: closed.signal });
       const positioner = openPopup(group, popup, "bottom", "start", () => {
+        closed.abort();
         popup = null;
         input.value = current;
         input.setAttribute("aria-expanded", "false");
@@ -65,20 +63,7 @@ export default function init(_signal: AbortSignal) {
     group.addEventListener("click", () => popup || open());
     input.addEventListener("input", () => (popup ? filter() : open()));
     input.addEventListener("keydown", (e) => {
-      if (!popup) {
-        if (e.key === "ArrowDown" || e.key === "Enter") open();
-        return;
-      }
-      const all = options();
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        e.stopPropagation();
-        highlight(Math.min(all.length - 1, Math.max(0, highlighted + (e.key === "ArrowDown" ? 1 : -1))));
-      } else if (e.key === "Enter" && all[highlighted]) {
-        e.preventDefault();
-        e.stopPropagation();
-        void setPref("lang", all[highlighted].dataset.lang!);
-      }
+      if (!popup && (e.key === "ArrowDown" || e.key === "Enter")) open();
     });
     input.addEventListener("blur", () => setTimeout(() => document.activeElement !== input && popup && closeAll(), 0));
   }
