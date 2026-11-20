@@ -269,10 +269,10 @@ export function openTemplate(trigger: HTMLElement, id: string, side: Side = "bot
 }
 
 /** A modal dialog from a template holding a backdrop and a viewport. */
-export function openDialog(id: string, setup?: (root: HTMLElement) => void, onClose?: () => void) {
+export function openDialog(source: string | DocumentFragment, setup?: (root: HTMLElement) => void, onClose?: () => void) {
   closeAll();
   const opener = document.activeElement;
-  const frag = fromTemplate(id);
+  const frag = typeof source === "string" ? fromTemplate(source) : source;
   if (!frag) return null;
   const root = document.createElement("div");
   root.append(frag);
@@ -302,6 +302,7 @@ function onKey(e: KeyboardEvent) {
   if (!stack.length) return;
   if (e.key === "Escape") {
     const top = stack[stack.length - 1];
+    if ((e.target as HTMLElement).closest?.("[contenteditable=true]") && top.el.contains(e.target as Node)) return;
     closeFrom(stack.length - 1);
     top.restore?.focus();
     e.preventDefault();

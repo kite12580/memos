@@ -72,9 +72,11 @@ test("opens an image preview from the keyboard and closes it with Escape", async
   await page.goto(`/memos/${uid}`);
   await page.locator("[data-action=preview]").focus();
   await page.keyboard.press("Enter");
-  await expect(page.locator(".cursor-zoom-out")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "kb.png" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close preview" })).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(page.locator(".cursor-zoom-out")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("[data-action=preview]")).toBeFocused();
 });
 
 test("switches toggle from the keyboard", async ({ page }) => {
@@ -164,4 +166,19 @@ test("the grid keeps every card and the composer when a memo is added or deleted
   await page.locator("[data-action=dialog-ok]").click();
   await expect(cards).toHaveCount(6);
   await expect(page.locator("[data-composer=create]")).toBeVisible();
+});
+
+test("New memo writes a memo from any page in memos' dialog", async ({ page }) => {
+  await page.goto("/attachments");
+  const trigger = page.locator("#sidebar").getByRole("link", { name: "New memo" });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "New memo" });
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/\/attachments$/);
+  await page.keyboard.type("from the dialog");
+  await page.keyboard.press("Control+Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await page.goto("/");
+  await expect(page.locator("#memo-list article").first()).toContainText("from the dialog");
 });

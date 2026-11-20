@@ -31,8 +31,11 @@ export async function refreshChrome() {
   const aside = $("[data-sidebar-header]")?.parentElement;
   const nextAside = doc.querySelector("#sidebar aside");
   if (aside && nextAside) {
+    const controls = () => $$("a[href], button, [tabindex]", aside);
+    const focused = controls().indexOf(document.activeElement as HTMLElement);
     aside.replaceChildren(...nextAside.childNodes);
     formatTimes(aside);
+    if (focused >= 0) controls()[focused]?.focus({ preventScroll: true });
   }
   const grid = doc.querySelector("[data-cells]");
   const cells = $("[data-cells]");

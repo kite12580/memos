@@ -38,13 +38,9 @@ async function onAction(el: HTMLElement, e: MouseEvent) {
     case "unblur":
       el.closest("[data-slot=memo-body]")?.firstElementChild?.classList.remove("blur-lg");
       return el.parentElement!.remove();
-    case "new-memo": {
-      const composer = $("[data-composer=create]");
-      if (!composer) return;
+    case "new-memo":
       e.preventDefault();
-      composer.scrollIntoView({ block: "center" });
-      return (await editor()).activate(composer);
-    }
+      return (await editor()).openGlobal();
     case "write-comment":
       return (await editor()).openComment();
     case "edit-detail": {
