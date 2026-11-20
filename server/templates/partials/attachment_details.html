@@ -1,0 +1,28 @@
+{%- macro row(icon, label, value, secondary) -%}
+<div class="grid grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-2.5 py-2.5">{{ h::icon(icon, "mu-icon-sm mt-0.5 text-mu-text-secondary") }}<div class="min-w-0"><div class="mu-label-sm text-mu-text-secondary">{{ label }}</div><div class="mt-0.5 break-words mu-caption text-mu-text tabular-nums">{{ value }}</div>{% if !secondary.is_empty() %}<div class="mt-0.5 mu-caption text-mu-text-secondary">{{ secondary }}</div>{% endif %}</div></div>
+{%- endmacro -%}
+<aside id="attachment-media-details" aria-label="{{ c.t.s("attachment-details.title") }}" data-theme="dark" class="absolute inset-x-0 bottom-0 z-40 flex max-h-[72vh] flex-col overflow-hidden rounded-t-mu-2xl border-t border-mu-line bg-mu-surface/96 text-mu-text backdrop-blur-xl lg:inset-y-0 lg:left-auto lg:w-[22rem] lg:max-h-none lg:rounded-none lg:border-l lg:border-t-0 lg:bg-mu-surface/85"><div class="mx-auto mt-2 h-1 w-8 rounded-full bg-mu-text-secondary/40 lg:hidden" aria-hidden="true"></div><header class="flex shrink-0 items-center justify-between gap-3 border-b border-mu-line px-4 pb-3 pt-3 lg:pt-20"><div><h2 class="mu-label text-mu-text">{{ c.t.s("attachment-details.title") }}</h2><p class="mt-0.5 max-w-[16rem] truncate mu-caption text-mu-text-secondary">{{ d.name }}</p></div><button type="button" aria-label="{{ c.t.s("attachment-details.actions.hide") }}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-md mu-focus lg:hidden" data-details-close="">{{ h::icon("x", "") }}</button></header><div class="overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4"><div class="space-y-5"><section><h3 class="mb-0.5 mu-label-sm text-mu-text-secondary">{{ c.t.s("attachment-details.sections.file") }}</h3><div class="divide-y divide-mu-line">
+{%- call row("file-type-corner", c.t.s("attachment-details.fields.file"), d.file, "") %}{% endcall %}
+{%- if let Some(v) = d.dimensions %}{% call row("scan", c.t.s("attachment-details.fields.dimensions"), v, "") %}{% endcall %}{% endif %}
+{%- if let Some(v) = d.duration %}{% call row("timer", c.t.s("attachment-details.fields.duration"), v, "") %}{% endcall %}{% endif -%}
+<div class="grid grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-2.5 py-2.5">{{ h::icon("calendar-arrow-up", "mu-icon-sm mt-0.5 text-mu-text-secondary") }}<div class="min-w-0"><div class="mu-label-sm text-mu-text-secondary">{{ c.t.s("attachment-details.fields.uploaded") }}</div><div class="mt-0.5 break-words mu-caption text-mu-text tabular-nums"><time data-fmt="datetime" datetime="{{ d.uploaded_iso }}">{{ d.uploaded }}</time></div></div></div></div></section>
+{%- if let Some((iso, text)) = d.captured -%}
+<section><h3 class="mb-0.5 mu-label-sm text-mu-text-secondary">{{ c.t.s("attachment-details.sections.capture") }}</h3><div class="divide-y divide-mu-line"><div class="grid grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-2.5 py-2.5">{{ h::icon("calendar-clock", "mu-icon-sm mt-0.5 text-mu-text-secondary") }}<div class="min-w-0"><div class="mu-label-sm text-mu-text-secondary">{{ c.t.s("attachment-details.fields.captured") }}</div><div class="mt-0.5 break-words mu-caption text-mu-text tabular-nums"><time data-fmt="civil" datetime="{{ iso }}">{{ text }}</time></div><div class="mt-0.5 mu-caption text-mu-text-secondary">{% if let Some(o) = d.utc_offset %}{{ o }}{% else %}{{ c.t.s("attachment-details.timezone-unknown") }}{% endif %}</div></div></div></div></section>
+{%- endif %}
+{%- if d.has_camera() -%}
+<section><h3 class="mb-0.5 mu-label-sm text-mu-text-secondary">{{ c.t.s("attachment-details.sections.camera") }}</h3><div class="divide-y divide-mu-line">
+{%- if let Some(v) = d.camera %}{% call row("camera", c.t.s("attachment-details.fields.camera"), v, "") %}{% endcall %}{% endif %}
+{%- if let Some(v) = d.lens %}{% call row("focus", c.t.s("attachment-details.fields.lens"), v, "") %}{% endcall %}{% endif %}
+{%- if let Some(v) = d.exposure %}{% call row("aperture", c.t.s("attachment-details.fields.exposure"), v, "") %}{% endcall %}{% endif -%}
+</div></section>
+{%- endif %}
+{%- if let Some(l) = d.location -%}
+<section><h3 class="mb-0.5 mu-label-sm text-mu-text-secondary">{{ c.t.s("attachment-details.sections.location") }}</h3><div class="divide-y divide-mu-line"><div class="grid grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-2.5 py-2.5">{{ h::icon("map-pin", "mu-icon-sm mt-0.5 text-mu-text-secondary") }}<div class="min-w-0"><div class="mu-label-sm text-mu-text-secondary">{{ c.t.s("attachment-details.fields.location") }}</div><div class="mt-0.5 break-words mu-caption text-mu-text tabular-nums">{{ l.coordinates }}</div>{% if let Some(a) = l.altitude %}<div class="mt-0.5 mu-caption text-mu-text-secondary">{{ c.t.s("attachment-details.fields.altitude") }} · {{ a }}</div>{% endif %}</div><div class="self-center"><button type="button" title="{{ c.t.s("attachment-details.actions.copy-coordinates") }}" aria-label="{{ c.t.s("attachment-details.actions.copy-coordinates") }}" class="mu-button mu-button-ghost mu-button-icon mu-base mu-s-sm mu-focus" data-copy="{{ l.copy }}">{{ h::icon("copy", "mu-icon-sm") }}</button></div></div></div></section>
+{%- endif %}
+{%- if !d.saved -%}
+<p class="rounded-mu-xl border border-mu-line px-3 py-2.5 mu-caption text-mu-text-secondary">{{ c.t.s("attachment-details.empty") }}</p>
+{%- endif %}
+{%- if let Some(o) = d.orientation -%}
+<details class="group border-t border-mu-line pt-3"><summary class="cursor-pointer select-none mu-label-sm text-mu-text-secondary hover:text-mu-text">{{ c.t.s("attachment-details.sections.technical") }}</summary><div class="mt-2">{% call row("rotate-cw", c.t.s("attachment-details.fields.source-orientation"), o, "") %}{% endcall %}</div></details>
+{%- endif -%}
+</div></div></aside>

@@ -1,9 +1,17 @@
-import { $ } from "./lib/dom";
+import { $, fromHTML, request } from "./lib/dom";
 import { icon } from "./lib/icon";
 import { closeLayer, openDialog } from "./lib/popup";
+import { formatTimes } from "./lib/time";
 import { ready, t } from "./editor/strings";
 
+declare const PREVIEW_CSS: string;
+
+const sheet = new CSSStyleSheet();
+sheet.replaceSync(PREVIEW_CSS);
+document.adoptedStyleSheets.push(sheet);
+
 interface Item {
+  uid: string;
   src: string;
   name: string;
   video: boolean;
@@ -22,24 +30,28 @@ export async function openPreview(from: HTMLElement) {
   await ready;
   const scope = from.closest("[data-composer-extras], [data-card], main") ?? document;
   const sources = [...scope.querySelectorAll<HTMLElement>("[data-action=preview]")];
-  const items: Item[] = sources.map((el) => ({ src: el.dataset.src!, name: el.dataset.name ?? "", video: el.hasAttribute("data-video") }));
+  const items: Item[] = sources.map((el) => ({ uid: el.dataset.uid ?? "", src: el.dataset.src!, name: el.dataset.name ?? "", video: el.hasAttribute("data-video") }));
   let index = Math.max(0, sources.indexOf(from));
   let scale = MIN;
   let pan = { x: 0, y: 0 };
+  let details = false;
+  let copied: ReturnType<typeof setTimeout> | undefined;
+  const panels = new Map<string, Promise<string>>();
+  const closed = new AbortController();
   const many = items.length > 1;
   const wide = matchMedia("(min-width: 640px)").matches;
 
   const frag = document.createRange().createContextualFragment(
     `<div class="mu-dialog-backdrop" role="presentation"></div><div role="presentation" class="mu-dialog-viewport mu-dialog-full"><div role="dialog" aria-modal="true" aria-labelledby="preview-title" class="mu-dialog-popup mu-dialog-bare mu-popup mu-base mu-s-md"><div class="absolute inset-0 bg-black/92">
 <div class="mu-visually-hidden"><h2 id="preview-title" class="mu-dialog-title mu-title" data-title=""></h2><p class="mu-dialog-description mu-body">${t("attachment-preview.description")}</p></div>
-<div class="absolute inset-x-0 top-0 z-50 bg-linear-to-b from-black/70 via-black/35 to-transparent px-3 pb-6 pt-3 sm:px-5 sm:pt-4"><div class="flex items-start justify-between gap-3"><div class="min-w-0 text-mu-text" data-theme="dark"><div class="truncate mu-label" data-name=""></div>${many ? '<div class="mt-1 mu-caption text-mu-text-secondary" data-count=""></div>' : ""}</div><div class="flex shrink-0 items-center gap-1.5" data-theme="dark">${button(t("attachment-preview.close"), "x", "data-close")}</div></div></div>
+<div data-bar="" class="absolute inset-x-0 top-0 z-50 bg-linear-to-b from-black/70 via-black/35 to-transparent px-3 pb-6 pt-3 sm:px-5 sm:pt-4"><div class="flex items-start justify-between gap-3"><div class="min-w-0 text-mu-text" data-theme="dark"><div class="truncate mu-label" data-name=""></div>${many ? '<div class="mt-1 mu-caption text-mu-text-secondary" data-count=""></div>' : ""}</div><div class="flex shrink-0 items-center gap-1.5" data-theme="dark">${button(t("attachment-details.actions.show"), "info", 'aria-expanded="false" aria-controls="attachment-media-details" data-info')}${button(t("attachment-preview.close"), "x", "data-close")}</div></div></div>
 <div class="flex h-full w-full items-center justify-center px-3 pb-20 pt-16 sm:px-16 sm:pb-8 sm:pt-20" data-surface=""><div class="flex max-h-full max-w-full items-center justify-center" data-stage=""></div></div>
 <div class="absolute inset-x-0 bottom-0 z-30 px-3 pb-3 pt-6" data-zoombar=""><div data-theme="dark" class="mx-auto flex w-fit items-center gap-1 rounded-full bg-black/60 px-2 py-2 backdrop-blur-sm">${
       many && !wide
         ? `${button(t("attachment-preview.previous"), "chevron-left", "data-prev")}<div class="min-w-9 px-1 text-center mu-label-sm tabular-nums text-mu-text-secondary" data-short=""></div>${button(t("attachment-preview.next"), "chevron-right", "data-next")}<div class="mx-1 h-5 w-px bg-mu-line"></div>`
         : ""
     }${button(t("map.zoom-out"), "zoom-out", "data-out")}<div class="min-w-12 px-2 text-center mu-label-sm tabular-nums text-mu-text-secondary" data-percent=""></div>${button(t("map.zoom-in"), "zoom-in", "data-in")}<div class="mx-1 h-5 w-px bg-mu-line"></div>${button(t("attachment-preview.reset-zoom"), "rotate-ccw", "data-reset")}</div></div>
-${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate-y-1/2 left-4">${button(t("attachment-preview.previous"), "chevron-left", "data-prev")}</div><div data-theme="dark" class="absolute top-1/2 z-20 -translate-y-1/2 right-4">${button(t("attachment-preview.next"), "chevron-right", "data-next")}</div>` : ""}
+${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate-y-1/2 left-4">${button(t("attachment-preview.previous"), "chevron-left", "data-prev")}</div><div data-theme="dark" class="absolute top-1/2 z-20 -translate-y-1/2 right-4" data-right="">${button(t("attachment-preview.next"), "chevron-right", "data-next")}</div>` : ""}
 </div></div></div>`,
   );
   const root = openDialog(frag, (root) => {
@@ -107,6 +119,49 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
       setDisabled("[data-prev]", index === 0);
       setDisabled("[data-next]", index === items.length - 1);
       if (!item.video) transform(0, false);
+      void showDetails();
+    };
+    const info = $("[data-info]", root)!;
+    const showDetails = async () => {
+      info.setAttribute("aria-label", details ? t("attachment-details.actions.hide") : t("attachment-details.actions.show"));
+      info.setAttribute("aria-expanded", String(details));
+      $("[data-bar]", root)!.classList.toggle("lg:pr-[23rem]", details);
+      surface.classList.toggle("lg:pr-[26rem]", details);
+      media.classList.toggle("lg:max-w-[calc(100vw-30rem)]", details);
+      for (const c of ["hidden", "lg:block", "lg:pr-[22rem]"]) zoombar.classList.toggle(c, details);
+      $("[data-right]", root)?.classList.toggle("lg:right-[23rem]", details);
+      const { uid } = items[index];
+      if (!details || !uid) return $("#attachment-media-details", root)?.remove();
+      if (!panels.has(uid)) panels.set(uid, request(`/f/attachments/${uid}`).then((r) => r.text()).catch(() => ""));
+      const html = await panels.get(uid)!;
+      if (!details || items[index].uid !== uid) return;
+      clearTimeout(copied);
+      $("#attachment-media-details", root)?.remove();
+      const panel = fromHTML(html);
+      formatTimes(panel);
+      popup.firstElementChild!.append(panel);
+    };
+    const hideDetails = () => {
+      const inside = $("#attachment-media-details", root)?.contains(document.activeElement);
+      details = false;
+      void showDetails();
+      if (inside) info.focus();
+    };
+    const copy = async (button: HTMLElement) => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy!);
+      } catch {
+        return;
+      }
+      const label = (done: boolean) => {
+        const text = done ? t("attachment-details.actions.copied") : t("attachment-details.actions.copy-coordinates");
+        button.title = text;
+        button.setAttribute("aria-label", text);
+        button.innerHTML = icon(done ? "check" : "copy", "mu-icon-sm");
+      };
+      label(true);
+      clearTimeout(copied);
+      copied = setTimeout(() => label(false), 1600);
     };
     const go = (step: number) => {
       const next = Math.min(items.length - 1, Math.max(0, index + step));
@@ -115,6 +170,16 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
       show();
     };
 
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key !== "Escape" || !details) return;
+        e.preventDefault();
+        e.stopPropagation();
+        hideDetails();
+      },
+      { capture: true, signal: closed.signal },
+    );
     popup.addEventListener("keydown", (e) => {
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -124,13 +189,22 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
     });
     popup.addEventListener("click", (e) => {
       const target = e.target as HTMLElement;
+      const copyButton = target.closest<HTMLElement>("[data-copy]");
       if (target.closest("[data-close]")) closeLayer(popup);
+      else if (target.closest("[data-info]")) {
+        details = !details;
+        void showDetails();
+      } else if (target.closest("[data-details-close]")) hideDetails();
+      else if (copyButton) void copy(copyButton);
       else if (target.closest("[data-prev]")) go(-1);
       else if (target.closest("[data-next]")) go(1);
       else if (target.closest("[data-out]")) zoom(scale - STEP);
       else if (target.closest("[data-in]")) zoom(scale + STEP);
       else if (target.closest("[data-reset]")) zoom(MIN);
-      else if (target === surface && scale === MIN) closeLayer(popup);
+      else if (target === surface && scale === MIN) {
+        if (details) hideDetails();
+        else closeLayer(popup);
+      }
     });
     surface.addEventListener(
       "wheel",
@@ -171,6 +245,6 @@ ${many && wide ? `<div data-theme="dark" class="absolute top-1/2 z-20 -translate
     stage.addEventListener("pointerup", end);
     stage.addEventListener("pointercancel", end);
     show();
-  });
+  }, () => closed.abort());
   root && $<HTMLElement>("[data-close]", root)?.focus();
 }

@@ -15,6 +15,7 @@ pub struct Attachment {
     pub height: Option<i64>,
     pub has_thumb: bool,
     pub created_ts: i64,
+    pub media: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +56,7 @@ impl Kind {
 }
 
 const COLUMNS: &str =
-    "id, uid, memo_id, filename, mime, kind, size, width, height, has_thumb, created_ts";
+    "id, uid, memo_id, filename, mime, kind, size, width, height, has_thumb, created_ts, media";
 
 fn attachment(r: &Row) -> rusqlite::Result<Attachment> {
     Ok(Attachment {
@@ -70,6 +71,7 @@ fn attachment(r: &Row) -> rusqlite::Result<Attachment> {
         height: r.get(8)?,
         has_thumb: r.get(9)?,
         created_ts: r.get(10)?,
+        media: r.get(11)?,
     })
 }
 
@@ -80,16 +82,17 @@ pub struct NewAttachment {
     pub width: Option<i64>,
     pub height: Option<i64>,
     pub created_ts: i64,
+    pub media: Option<String>,
 }
 
 /// Records an uploaded file; `uid` names it on disk.
 pub fn create(c: &Connection, uid: &str, a: NewAttachment) -> DbResult<Attachment> {
     let kind = Kind::from_mime(&a.mime);
     c.prepare_cached(
-        "INSERT INTO attachment(uid, filename, mime, kind, size, width, height, created_ts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO attachment(uid, filename, mime, kind, size, width, height, created_ts, media)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )?
-    .execute(params![uid, a.filename, a.mime, kind.as_str(), a.size, a.width, a.height, a.created_ts])?;
+    .execute(params![uid, a.filename, a.mime, kind.as_str(), a.size, a.width, a.height, a.created_ts, a.media])?;
     Ok(get(c, uid)?.expect("attachment just created"))
 }
 
@@ -186,14 +189,14 @@ impl Section {
 /// Library attachments, newest first, with their memo's uid.
 pub fn library(c: &Connection, section: Section, before: Option<i64>, limit: usize) -> DbResult<Vec<(Attachment, Option<String>)>> {
     let sql = format!(
-        "SELECT a.id, a.uid, a.memo_id, a.filename, a.mime, a.kind, a.size, a.width, a.height, a.has_thumb, a.created_ts, m.uid
+        "SELECT a.id, a.uid, a.memo_id, a.filename, a.mime, a.kind, a.size, a.width, a.height, a.has_thumb, a.created_ts, a.media, m.uid
          FROM attachment a LEFT JOIN memo m ON m.id = a.memo_id
          WHERE {} AND a.id < ? ORDER BY a.id DESC LIMIT ?",
         section.condition()
     );
     Ok(c.prepare_cached(&sql)?
         .query_map(params![before.unwrap_or(i64::MAX), limit as i64], |r| {
-            Ok((attachment(r)?, r.get(11)?))
+            Ok((attachment(r)?, r.get(12)?))
         })?
         .collect::<rusqlite::Result<_>>()?)
 }

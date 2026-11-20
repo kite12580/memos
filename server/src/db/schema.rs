@@ -97,6 +97,8 @@ CREATE TRIGGER memo_fts_update AFTER UPDATE OF content ON memo BEGIN
   INSERT INTO memo_fts(memo_fts, rowid, content) VALUES ('delete', old.id, old.content);
   INSERT INTO memo_fts(rowid, content) VALUES (new.id, new.content);
 END;
+"#, r#"
+ALTER TABLE attachment ADD COLUMN media TEXT;
 "#];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

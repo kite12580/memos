@@ -104,7 +104,8 @@ fn sane_name(name: &str) -> String {
     if name.trim().is_empty() { "file".into() } else { name }
 }
 
-/// `POST /attachments?name=…&type=…[&w=…&h=…]` with the file as the body.
+/// `POST /attachments?name=…&type=…[&w=…&h=…][&media=…]` with the file as the body;
+/// `media` is the JSON `media::sanitize` takes.
 pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
     let name = sane_name(&req.query("name").unwrap_or_default());
     let mime = req
@@ -113,6 +114,7 @@ pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
         .unwrap_or_else(|| crate::assets::mime_type(&name).split(';').next().unwrap_or("").to_string());
     let dim = |k: &str| req.query(k).and_then(|v| v.parse::<i64>().ok()).filter(|v| *v > 0);
     let (width, height) = (dim("w"), dim("h"));
+    let media = req.query("media").and_then(|m| crate::media::sanitize(&m, &mime, width.is_some()));
     let uid = new_uid();
     let size = match save(&mut req, &path(app, &uid, false), app.cfg.max_upload).await {
         Ok(s) => s,
@@ -133,6 +135,7 @@ pub async fn upload(app: &Arc<App>, mut req: Request) -> Response {
                     width,
                     height,
                     created_ts: now,
+                    media,
                 },
             )
         })

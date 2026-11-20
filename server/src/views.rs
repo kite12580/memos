@@ -22,6 +22,7 @@ pub struct Prefs {
     pub compact: bool,
     pub full_width: bool,
     pub tag_tree: bool,
+    pub save_media: bool,
     pub sidebar_width: u32,
     pub panel_width: u32,
     pub tz: TimeZone,
@@ -45,6 +46,7 @@ impl Prefs {
             compact: cookie("compact").as_deref() == Some("1"),
             full_width: cookie("wide").as_deref() == Some("1"),
             tag_tree: cookie("tags").as_deref() == Some("tree"),
+            save_media: cookie("media").as_deref() == Some("1"),
             sidebar_width: cookie("sw")
                 .and_then(|w| w.parse().ok())
                 .map_or(256, |w: u32| w.clamp(224, 400)),
@@ -102,7 +104,7 @@ impl Prefs {
     /// A short key of everything that changes rendered HTML, for ETags.
     pub fn key(&self) -> String {
         format!(
-            "{}{}{}{}{}{}{}{}-{}{}",
+            "{}{}{}{}{}{}{}{}{}-{}{}",
             self.theme,
             self.layout,
             u8::from(self.by_updated),
@@ -110,6 +112,7 @@ impl Prefs {
             u8::from(self.compact),
             u8::from(self.full_width),
             u8::from(self.tag_tree),
+            u8::from(self.save_media),
             self.sidebar_width,
             self.panel_width,
             self.tz.iana_name().unwrap_or("")
@@ -641,6 +644,7 @@ pub fn month_view(t: &T, start: Date, created: &[i64], tz: &TimeZone, now: i64, 
 // ───── Cards ─────
 
 pub struct Visual {
+    pub uid: String,
     pub thumb: String,
     pub full: String,
     pub alt: String,
@@ -784,6 +788,7 @@ pub fn file_row(base: &str, a: &Attachment) -> FileRow {
 
 fn visual(base: &str, a: &Attachment, class: &'static str) -> Visual {
     Visual {
+        uid: a.uid.clone(),
         thumb: thumb_url(base, a),
         full: file_url(base, a),
         alt: a.filename.clone(),

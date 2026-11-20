@@ -27,6 +27,30 @@ const renderVersion = hash(
       .join(""),
 );
 
+// The attachment preview carries the utilities only it uses (app.css skips its sources), so they
+// cost the first page nothing. A word another source also has stays in app.css, which keeps the
+// sheets from overriding each other's rules.
+const sourceFiles = (dir, exts) =>
+  readdirSync(join(root, dir), { recursive: true })
+    .filter((f) => exts.some((e) => f.endsWith(e)))
+    .map((f) => join(root, dir, f));
+const previewSources = ["src/preview.ts", "../server/templates/partials/attachment_details.html"].map((f) => join(root, f));
+const words = (files) => new Set(files.flatMap((f) => readFileSync(f, "utf8").split(/[\s"'`<>={}]+/)));
+const shared = words(
+  [...sourceFiles("../server/templates", [".html"]), ...sourceFiles("../server/src", [".rs"]), ...sourceFiles("src", [".ts", ".css"])].filter((f) => !previewSources.includes(f)),
+);
+const previewOnly = [...words(previewSources)].filter((w) => !shared.has(w) && /^!?[a-z][a-z0-9:./%-]*$/.test(w.replace(/\[[^\]]*\]/g, "x")));
+mkdirSync(join(root, ".build"), { recursive: true });
+writeFileSync(
+  join(root, ".build/preview.css"),
+  `@import "tailwindcss/theme" layer(theme);\n@import "tailwindcss/utilities" layer(utilities) source(none);\n@import "@usememos/ui/tailwind.css";\n@source inline("${previewOnly.join(" ")}");\n`,
+);
+execFileSync(join(root, "node_modules/.bin/tailwindcss"), ["-i", ".build/preview.css", "-o", ".build/preview.out.css", "--minify"], {
+  cwd: root,
+  stdio: ["ignore", "ignore", "inherit"],
+});
+const previewCss = readFileSync(join(root, ".build/preview.out.css"), "utf8");
+
 const result = await esbuild.build({
   absWorkingDir: root,
   entryPoints: { boot: "src/boot.ts" },
@@ -41,7 +65,7 @@ const result = await esbuild.build({
   chunkNames: "c-[hash]",
   assetNames: "a-[hash]",
   loader: { ".css": "empty", ".wasm": "file" },
-  define: { RENDER_VERSION: JSON.stringify(renderVersion) },
+  define: { RENDER_VERSION: JSON.stringify(renderVersion), PREVIEW_CSS: JSON.stringify(previewCss) },
   metafile: true,
   logLevel: "warning",
 });
