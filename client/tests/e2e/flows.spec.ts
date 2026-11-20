@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { auth, exifJpeg, memo, png, upload } from "./pages-helpers";
+import { auth, exifJpeg, exifTiff, memo, png, upload } from "./pages-helpers";
 
 const composer = "[data-composer=create] .memo-editor-root";
 
@@ -103,10 +103,13 @@ test("saves photo metadata when asked and shows it in the preview details", asyn
   await page.locator("[data-composer=create] [data-popup=insert-menu]").click();
   const chooser = page.waitForEvent("filechooser");
   await page.locator("[data-insert=attachment]").click();
-  await (await chooser).setFiles({ name: "exif.jpg", mimeType: "image/jpeg", buffer: exifJpeg() });
-  await expect(page.locator("[data-composer=create] [data-composer-extras] img")).toHaveCount(1);
+  await (await chooser).setFiles([
+    { name: "exif.jpg", mimeType: "image/jpeg", buffer: exifJpeg() },
+    { name: "exif.png", mimeType: "image/png", buffer: png([128, 128, 128], exifTiff()) },
+  ]);
+  await expect(page.locator("[data-composer=create] [data-composer-extras] img")).toHaveCount(2);
   await page.locator("[data-composer=create] [data-action=save]").click();
-  await page.locator("#memo-list article").filter({ hasText: "exif photo" }).locator("[data-action=preview]").click();
+  await page.locator("#memo-list article").filter({ hasText: "exif photo" }).locator("[data-action=preview]").first().click();
   await page.getByRole("button", { name: "Show attachment details" }).click();
   const details = page.getByRole("complementary", { name: "Details" });
   await expect(details).toContainText("Canon Canon EOS R6");
@@ -114,6 +117,10 @@ test("saves photo metadata when asked and shows it in the preview details", asyn
   await expect(details).toContainText("May 1, 2024, 02:23:45 PM");
   await expect(details).toContainText("Time zone unknown");
   await expect(details).not.toContainText("No saved capture metadata.");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("dialog", { name: "exif.png" })).toBeVisible();
+  await expect(details).toContainText("Canon Canon EOS R6");
+  await expect(details).toContainText("4 × 4 px");
 
   const media = JSON.stringify({ photo: { location: { latitude: 48.8582, longitude: 2.2945, altitudeMeters: 35.5 } } });
   const res = await request.post(`/api/memos/attachments?name=gps.jpg&type=image%2Fjpeg&w=4&h=4&media=${encodeURIComponent(media)}`, { headers: auth, data: png() });
