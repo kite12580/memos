@@ -1,9 +1,9 @@
 {% extends "layout.html" %}
 {% block title %}{{ title }}{% endblock %}
 {% block main %}
-<section class="@container flex min-h-full w-full flex-col items-center" style="--memo-panel-width: 400px;">
+<section class="@container flex min-h-full w-full flex-col items-center" style="--memo-panel-width: {{ c.prefs.panel_width }}px;">
 <div class="mx-auto w-full px-4 pb-8 pt-3 sm:px-6 md:pt-6">
-<section class="flex w-full min-w-0 flex-col gap-1 xl:h-[calc(100dvh-3.5rem)]{% if panel.is_some() %} xl:pe-[calc(var(--memo-panel-width)+12px)]{% endif %}" data-page="calendar" data-month="{{ cal.key }}" data-current="{{ cal.current }}" data-today="{{ cal.today }}" data-empty="{{ c.t.s("calendar.no-memos-on-day") }}">
+<section class="flex w-full min-w-0 flex-col gap-1 xl:h-[calc(100dvh-3.5rem)]{% if panel.is_some() %} xl:pe-[calc(var(--memo-panel-width)+12px)]{% endif %}" data-page="calendar" data-month="{{ cal.key }}" data-query="{{ cal.qs }}" data-current="{{ cal.current }}" data-today="{{ cal.today }}">
 <header class="flex h-9 shrink-0 items-center ps-px">
 <h1 class="min-w-0"><button type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="{{ c.t.s("calendar.select-month") }}" data-month-picker="" class="mu-popover-trigger mu-button mu-button-ghost mu-base mu-s-md mu-focus mu-heading text-mu-text"><time data-fmt="month" datetime="{{ cal.key }}">{{ cal.title }}</time></button></h1>
 <div class="ms-auto flex items-center gap-0.5 pointer-coarse:gap-4">

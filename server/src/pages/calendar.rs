@@ -65,6 +65,8 @@ impl Day {
 
 pub struct Calendar {
     pub key: String,
+    /// The view and search the month is narrowed by, as a query string for its links.
+    pub qs: String,
     pub title: String,
     pub year: i16,
     pub prev: String,
@@ -224,7 +226,7 @@ fn day_label(c: &Ctx, count: usize, date: &str) -> String {
     s.to_lowercase()
 }
 
-fn build(c: &Ctx, start: Date, memos: &[DayMemo], open: Option<&str>) -> Calendar {
+fn build(c: &Ctx, start: Date, memos: &[DayMemo], open: Option<&str>, qs: &str) -> Calendar {
     let t = &c.t;
     let summaries = summarize(c, memos);
     let max = summaries.values().map(|s| s.count).max().unwrap_or(1);
@@ -274,7 +276,7 @@ fn build(c: &Ctx, start: Date, memos: &[DayMemo], open: Option<&str>) -> Calenda
                 "text-mu-text-secondary/70"
             };
             Day {
-                href: format!("{}/calendar/{date}", c.base),
+                href: format!("{}/calendar/{date}{qs}", c.base),
                 label: day_label(c, count, &date),
                 focus: date == focus,
                 numeral: if open && !today { OPEN_BADGE } else { numeral_base },
@@ -297,15 +299,16 @@ fn build(c: &Ctx, start: Date, memos: &[DayMemo], open: Option<&str>) -> Calenda
         let (a, b) = s.split_once("{{month}}").unwrap_or((s, ""));
         (a.to_string(), b.to_string())
     });
-    let cal_href = |d: Date| format!("{}/calendar/{}", c.base, month_key(d));
+    let cal_href = |d: Date| format!("{}/calendar/{}{qs}", c.base, month_key(d));
     Calendar {
+        qs: qs.to_string(),
         title: format!("{} {}", MONTHS[start.month() as usize - 1], start.year()),
         prev: cal_href(shift(start, -1)),
         next: cal_href(shift(start, 1)),
         today_href: if current == key && open != Some(today_key.as_str()) {
-            format!("{}/calendar/{today_key}", c.base)
+            format!("{}/calendar/{today_key}{qs}", c.base)
         } else {
-            format!("{}/calendar", c.base)
+            format!("{}/calendar{qs}", c.base)
         },
         year: start.year(),
         today: today_key,
@@ -344,17 +347,23 @@ pub async fn calendar(app: &Arc<App>, req: &Request, month: Option<&str>) -> Res
     };
     let (from, to) = v::month_range(start, &c.prefs.tz);
     let ts = if c.prefs.by_updated { "updated_ts" } else { "created_ts" };
+    let (view_id, q) = super::view_and_query(req);
+    let terms = crate::query::parse(&q);
+    let qs = super::with_query("", view_id, &q);
+    let tz = c.prefs.tz.clone();
     let app2 = app.clone();
+    let filter = terms.clone();
     let data = app
         .db
         .with(move |conn| {
+            let views = crate::db::views::list(conn)?;
+            let all = filtered(&views, view_id, filter);
+            let (mut conds, mut params) = crate::query::to_sql(&all, &tz, ts);
+            conds.insert(0, format!("m.parent_id IS NULL AND m.archived = 0 AND m.{ts} >= ? AND m.{ts} < ?"));
+            params.splice(0..0, [rusqlite::types::Value::Integer(from), rusqlite::types::Value::Integer(to)]);
             let rows = conn
-                .prepare_cached(&format!(
-                    "SELECT m.id, m.{ts}, m.content, m.html FROM memo m
-                     WHERE m.parent_id IS NULL AND m.archived = 0 AND m.{ts} >= ? AND m.{ts} < ?
-                     ORDER BY m.{ts}, m.uid"
-                ))?
-                .query_map([from, to], |r| Ok((r.get::<_, i64>(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .prepare(&format!("SELECT m.id, m.{ts}, m.content, m.html FROM memo m WHERE {} ORDER BY m.{ts}, m.uid", conds.join(" AND ")))?
+                .query_map(rusqlite::params_from_iter(params.iter()), |r| Ok((r.get::<_, i64>(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
                 .collect::<rusqlite::Result<Vec<(i64, i64, String, String)>>>()?;
             let ids: Vec<i64> = rows.iter().map(|r| r.0).collect();
             let mut files = atts::for_memos(conn, &ids)?;
@@ -367,22 +376,28 @@ pub async fn calendar(app: &Arc<App>, req: &Request, month: Option<&str>) -> Res
                     files: files.remove(&id).unwrap_or_default(),
                 })
                 .collect();
-            Ok((memos, crate::db::views::list(conn)?, app2.tag_counts(conn)?))
+            Ok((memos, views, app2.tag_counts(conn)?))
         })
         .await;
     let (memos, views, tags) = match data {
         Ok(d) => d,
         Err(e) => return e.into(),
     };
+    let links = super::Filters {
+        path: format!("{}/calendar/{}", c.base, month_key(start)),
+        view: view_id,
+        terms: terms.clone(),
+    };
     let sb = Sidebar {
         active: "calendar",
-        views: Some(super::view_rows(&views, &super::Filters::home(c.base))),
-        tags: Some(v::tag_rows(&tags, c.prefs.tag_tree, None, &|t| super::Filters::home(c.base).tag(t))),
+        views: Some(super::view_rows(&views, &links)),
+        active_view: view_id.filter(|id| views.iter().any(|w| w.id == *id)),
+        tags: Some(v::tag_rows(&tags, c.prefs.tag_tree, super::active_tag(&terms).as_deref(), &|t| links.tag(t))),
         ..Default::default()
     };
     let open_key = open.map(|d| d.strftime("%Y-%m-%d").to_string());
     let panel = match open {
-        Some(d) => match day_panel(app, &c, d).await {
+        Some(d) => match day_panel(app, &c, d, view_id, terms, &qs).await {
             Ok(p) => Some(p),
             Err(e) => return e.into(),
         },
@@ -390,7 +405,7 @@ pub async fn calendar(app: &Arc<App>, req: &Request, month: Option<&str>) -> Res
     };
     let p = CalendarPage {
         title: c.page_title(c.t.s("common.calendar")),
-        cal: build(&c, start, &memos, open_key.as_deref()),
+        cal: build(&c, start, &memos, open_key.as_deref(), &qs),
         panel,
         sb,
         c,
@@ -398,19 +413,31 @@ pub async fn calendar(app: &Arc<App>, req: &Request, month: Option<&str>) -> Res
     super::page(&etag, &p)
 }
 
-async fn day_panel(app: &Arc<App>, c: &Ctx<'_>, day: Date) -> Result<DayPanel, crate::db::DbError> {
+/// The month's filter: the chosen view's query and the search, as on Home.
+fn filtered(views: &[crate::db::views::View], view: Option<i64>, terms: Vec<Term>) -> Vec<Term> {
+    let mut all = view
+        .and_then(|id| views.iter().find(|w| w.id == id))
+        .map(|w| crate::query::parse(&w.query))
+        .unwrap_or_default();
+    all.extend(terms);
+    all
+}
+
+async fn day_panel(app: &Arc<App>, c: &Ctx<'_>, day: Date, view: Option<i64>, terms: Vec<Term>, qs: &str) -> Result<DayPanel, crate::db::DbError> {
     let date = day.strftime("%Y-%m-%d").to_string();
-    let terms = vec![Term {
-        neg: false,
-        atom: Atom::On(date.clone()),
-    }];
-    let mut lq = super::list_query(c, super::Scope::Home, terms, None);
+    let mut lq = super::list_query(c, super::Scope::Home, vec![], None);
+    let on = Atom::On(date.clone());
     lq.order.asc = true;
     lq.limit = DAY_LIMIT;
+    let by_updated = c.prefs.by_updated;
     let (ms, extras) = app
         .db
         .with(move |conn| {
-            let (ms, _) = memos::list(conn, &lq)?;
+            let mut lq = lq;
+            lq.terms = filtered(&crate::db::views::list(conn)?, view, terms);
+            lq.terms.push(Term { neg: false, atom: on });
+            let (mut ms, _) = memos::list(conn, &lq)?;
+            ms.sort_by_key(|m| (if by_updated { m.updated_ts } else { m.created_ts }, m.id));
             let extras = super::Extras::load(conn, &ms, true)?;
             Ok((ms, extras))
         })
@@ -424,7 +451,7 @@ async fn day_panel(app: &Arc<App>, c: &Ctx<'_>, day: Date) -> Result<DayPanel, c
             MONTHS[day.month() as usize - 1],
             day.day()
         ),
-        close_href: format!("{}/calendar/{}", c.base, month_key(day)),
+        close_href: format!("{}/calendar/{}{qs}", c.base, month_key(day)),
         cards: super::cards(c, &ms, &extras, false),
         composer,
         date,
@@ -437,7 +464,9 @@ pub async fn day_fragment(app: &Arc<App>, req: &Request) -> Response {
     let Some(day) = req.query("d").as_deref().and_then(parse_day) else {
         return Response::error(400, "d must be a date");
     };
-    match day_panel(app, &c, day).await {
+    let (view_id, q) = super::view_and_query(req);
+    let qs = super::with_query("", view_id, &q);
+    match day_panel(app, &c, day, view_id, crate::query::parse(&q), &qs).await {
         Ok(panel) => super::html(&DayPanelFragment { c, panel }).with("cache-control", "private, no-cache"),
         Err(e) => e.into(),
     }

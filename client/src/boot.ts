@@ -259,7 +259,7 @@ function initPage() {
   cards.markFresh();
   initTagTree();
   initList(signal);
-  if ($("[data-resize=sidebar]")) void ui().then((u) => u.initResize());
+  if ($("[data-resize]")) void ui().then((u) => u.initResize());
   if ($("[data-highlight]")) void ui().then((u) => u.highlight(signal));
   renderStale();
   const composer = $("[data-composer=create]");

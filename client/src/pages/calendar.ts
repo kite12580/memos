@@ -8,6 +8,8 @@ import { closeAll, enter, isOpenFor, openPopup } from "../lib/popup";
 import { formatTimes } from "../lib/time";
 import { toastError } from "../lib/toast";
 
+const ui = () => import("../ui");
+
 export default function init(signal: AbortSignal) {
   const LINE_HEIGHT = 18;
   const IMAGE_SIZE = 36;
@@ -19,6 +21,7 @@ export default function init(signal: AbortSignal) {
 
   const root = $("[data-page=calendar]")!;
   const cells = $("[data-cells]", root)!;
+  const qs = root.dataset.query ?? "";
 
   function layoutFor(width: number, height: number) {
     const compact = width < SLIM_MIN_CELL_WIDTH;
@@ -87,7 +90,7 @@ export default function init(signal: AbortSignal) {
       label.textContent = String(year);
       links.forEach((a, i) => {
         const key = `${year}-${String(i + 1).padStart(2, "0")}`;
-        a.href = `${base}/calendar/${key}`;
+        a.href = `${base}/calendar/${key}${qs}`;
         a.textContent = monthNames[i];
         if (key === root.dataset.month) a.setAttribute("aria-current", "page");
         else a.removeAttribute("aria-current");
@@ -173,14 +176,11 @@ export default function init(signal: AbortSignal) {
     section.setAttribute("aria-label", label);
     $("h2", section)!.textContent = label;
     try {
-      const res = await fetch(`${base}/f/memos?scope=home&q=${encodeURIComponent(`on:${date}`)}`);
-      if (!res.ok) throw new Error(res.statusText);
-      const list = fromHTML(await res.text());
-      list.querySelector("[data-next]")?.remove();
+      const day = fromHTML(await (await request(`/f/day?d=${date}${qs.replace("?", "&")}`)).text());
       if (date !== shown) return;
       const holder = section.lastElementChild as HTMLElement;
-      holder.replaceChildren(list);
-      if (!holder.children.length) holder.innerHTML = `<p class="py-8 text-center mu-body text-mu-text-secondary">${root.dataset.empty}</p>`;
+      holder.dataset.dayCards = "";
+      holder.replaceChildren(...$("[data-day-cards]", day)!.childNodes);
       formatTimes(holder);
       initClamps(holder);
       document.dispatchEvent(new CustomEvent("memos:cards"));
@@ -196,20 +196,25 @@ export default function init(signal: AbortSignal) {
 
   async function openPanel(date: string, push: boolean) {
     const cell = cellFor(date);
-    if (!cell || !date.startsWith(root.dataset.month!)) return go(`${base}/calendar/${date}`);
-    if (push) history.pushState(null, "", `${base}/calendar/${date}`);
+    if (!cell || !date.startsWith(root.dataset.month!)) return go(`${base}/calendar/${date}${qs}`);
+    if (push) history.pushState(null, "", `${base}/calendar/${date}${qs}`);
     opening = date;
     select(cell);
     try {
-      const next = fromHTML(await (await request(`/f/day?d=${date}`)).text()).firstElementChild as HTMLElement;
+      const next = fromHTML(await (await request(`/f/day?d=${date}${qs.replace("?", "&")}`)).text()).firstElementChild as HTMLElement;
       if (opening !== date) return;
       const old = panel();
       if (old) old.replaceWith(next);
       else {
         root.parentElement!.after(next);
         enter(next);
+        $("[data-day-cards]", next)!.focus({ preventScroll: true });
       }
       root.classList.add(PANEL_GAP);
+      void ui().then((u) => {
+        u.initResize();
+        u.fitPanel();
+      });
       formatTimes(next);
       initClamps(next);
       document.dispatchEvent(new CustomEvent("memos:cards"));
@@ -219,12 +224,13 @@ export default function init(signal: AbortSignal) {
   }
 
   function closePanel(push: boolean) {
-    if (push) history.pushState(null, "", `${base}/calendar/${root.dataset.month}`);
+    if (push) history.pushState(null, "", `${base}/calendar/${root.dataset.month}${qs}`);
     opening = "";
     select(null);
     root.classList.remove(PANEL_GAP);
     const el = panel();
     if (!el) return;
+    if (el.contains(document.activeElement)) cellFor(el.dataset.dayPanel!)?.focus({ preventScroll: true });
     el.removeAttribute("data-day-panel");
     el.setAttribute("data-ending-style", "");
     setTimeout(() => el.remove(), 200);
@@ -288,4 +294,9 @@ export default function init(signal: AbortSignal) {
   );
 
   if (phone.matches) void showDay($<HTMLElement>('[tabindex="0"]', cells)!);
+  else if (panel()) {
+    $("[data-day-cards]", panel()!)!.focus({ preventScroll: true });
+    void ui().then((u) => u.fitPanel());
+  }
+  addEventListener("resize", () => panel() && void ui().then((u) => u.fitPanel()), { signal });
 }

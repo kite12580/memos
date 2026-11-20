@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { memo, png, thisMonth, today, upload } from "./pages-helpers";
+import { auth, memo, png, thisMonth, today, upload } from "./pages-helpers";
 
 test.use({ timezoneId: "UTC" });
 
@@ -64,7 +64,7 @@ test("lists a day's memos under the grid on phones", async ({ page, request }) =
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/calendar");
   const day = page.locator("[data-day-memos]");
-  await expect(day.locator("article").first()).toContainText("Phone day memo");
+  await expect(day.locator("article").last()).toContainText("Phone day memo");
   await expect(page.locator(`[data-calendar-date="${today()}"]`)).toHaveAttribute("aria-current", "page");
 });
 
@@ -77,4 +77,47 @@ test("marks the searched day in the sidebar calendar", async ({ page, request })
   await page.getByRole("button", { name: "Next month" }).first().click();
   await page.getByRole("button", { name: "Previous month" }).first().click();
   await expect(page.locator(`#sidebar-stats a[href$="on%3A${today()}"]`)).toHaveAttribute("aria-label", / \(selected\)$/);
+});
+
+test("a sidebar tag narrows the month and its days", async ({ page, request }) => {
+  await memo(request, "Narrowed #calnarrow");
+  await memo(request, "Left out of the month");
+  await page.goto("/calendar");
+  await page.locator("#sidebar").getByRole("button", { name: /^#calnarrow,/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/calendar/${thisMonth()}\\?q=%23calnarrow$`));
+  await expect(page.locator(`[data-calendar-date="${today()}"]`)).toHaveAttribute("aria-label", `1 memo in ${today()}`);
+  await page.locator(`[data-calendar-date="${today()}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`/calendar/${today()}\\?q=%23calnarrow$`));
+  await expect(page.locator(`[data-day-panel="${today()}"] article`)).toHaveCount(1);
+});
+
+test.describe("on a wide screen", () => {
+  test.use({ viewport: { width: 1700, height: 900 } });
+
+  test("the day panel lists by time, takes focus and resizes like memos'", async ({ page, request }) => {
+    const at = (h: number) => Math.floor(Date.parse(`${today()}T0${h}:05:00Z`) / 1000);
+    const pinned = await memo(request, "Later and pinned", { createdTs: at(9), pinned: true });
+    await memo(request, "Earlier", { createdTs: at(8) });
+    await page.goto("/calendar");
+    await page.locator(`[data-calendar-date="${today()}"]`).click();
+    const panel = page.locator(`[data-day-panel="${today()}"]`);
+    await expect(panel.locator("[data-day-cards]")).toBeFocused();
+    const texts = await panel.locator("article").allInnerTexts();
+    expect(texts.findIndex((t) => t.includes("Earlier"))).toBeLessThan(texts.findIndex((t) => t.includes("Later and pinned")));
+    await expect(panel.locator("article", { hasText: "Earlier" }).locator("time").first()).toHaveText("8:05 AM");
+
+    const handle = panel.getByRole("separator", { name: "Resize panel" });
+    await handle.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(handle).toHaveAttribute("aria-valuenow", "416");
+    await expect.poll(() => panel.evaluate((el) => el.getBoundingClientRect().width)).toBe(416);
+    await page.reload();
+    const again = page.locator(`[data-day-panel="${today()}"]`).getByRole("separator");
+    await expect(again).toHaveAttribute("aria-valuenow", "416");
+    await again.dblclick();
+    await expect(again).toHaveAttribute("aria-valuenow", "400");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(`[data-calendar-date="${today()}"]`)).toBeFocused();
+    await request.patch(`/api/memos/${pinned}`, { headers: auth, data: { pinned: false } });
+  });
 });

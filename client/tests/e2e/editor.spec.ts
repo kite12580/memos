@@ -109,3 +109,21 @@ test("highlights the searched words in memo bodies", async ({ page, request }) =
   await page.goto("/?q=zebracorn");
   await expect.poll(() => page.evaluate(() => [...(CSS.highlights.get("memo-search-match") ?? [])].map((r) => r.toString()))).toEqual(["Zebracorn"]);
 });
+
+test("opens tag suggestions for a tag typed before the editor loads", async ({ page, request }) => {
+  await request.post("/api/memos", { ...auth, data: { content: "#earlytag" } });
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/assets/c-*.js", async (route) => {
+    const response = await route.fetch();
+    if ((await response.text()).includes("memos-lite-source-mode")) await held;
+    await route.fulfill({ response });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator("[data-composer=create] [contenteditable]").click();
+  await page.keyboard.type("hi #ear");
+  release();
+  await expect(page.getByRole("option", { name: "#earlytag" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("[data-composer=create] .memo-editor-root")).toContainText("hi #earlytag");
+});

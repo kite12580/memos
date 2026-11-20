@@ -406,7 +406,7 @@ pub async fn profile(app: &Arc<App>, req: &Request) -> Response {
     }
 }
 
-const PREF_KEYS: [&str; 10] = ["theme", "lang", "layout", "order", "dir", "compact", "wide", "tags", "sw", "tz"];
+const PREF_KEYS: [&str; 11] = ["theme", "lang", "layout", "order", "dir", "compact", "wide", "tags", "sw", "pw", "tz"];
 
 /// Stores a display preference in a year-long cookie.
 pub fn prefs(app: &Arc<App>, req: &Request) -> Response {

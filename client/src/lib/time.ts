@@ -34,7 +34,8 @@ export function formatTimes(root: ParentNode = document) {
     const date = new Date(dt.length === 7 ? `${dt}-01T00:00:00` : dt.length === 10 ? `${dt}T00:00:00` : dt);
     if (Number.isNaN(date.getTime())) continue;
     const fmt = el.dataset.fmt;
-    const text = fmt && formats[fmt] ? formats[fmt].format(date) : relative(date);
+    const mode = el.dataset.rel === "full" || !el.closest("[data-day-cards]") ? el.dataset.rel : "time";
+    const text = fmt && formats[fmt] ? formats[fmt].format(date) : mode === "full" ? date.toLocaleString(lang) : mode === "time" ? date.toLocaleTimeString(lang, { hour: "numeric", minute: "2-digit" }) : relative(date);
     if (el.textContent !== text) el.textContent = text;
   }
 }
