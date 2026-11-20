@@ -43,7 +43,7 @@ export function toast(message: string, type: "success" | "danger" = "success") {
   if (!viewport) return;
   initViewport(viewport);
   const el = document.createElement("div");
-  el.className = `mu-toast mu-popup mu-base mu-s-md mu-toast-${type}`;
+  el.className = `mu-toast mu-popup mu-base mu-s-md ${type === "danger" ? "mu-toast-danger" : "mu-toast-success"}`;
   el.dataset.type = type;
   el.setAttribute("role", "dialog");
   el.tabIndex = 0;
