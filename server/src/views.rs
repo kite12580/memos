@@ -1,6 +1,7 @@
 //! What the templates render: the page frame, the sidebar and memo cards,
 //! built from store rows.
 
+use crate::content;
 use crate::db::attachments::{Attachment, Kind};
 use crate::db::memos::Memo;
 use crate::db::views::TagMeta;
@@ -667,6 +668,14 @@ pub struct VisualItem<'a> {
     pub live: Option<Live>,
 }
 
+/// memos' filterInlineManagedAttachments: the attachments not shown in the
+/// text, leaving out the whole motion photo of one that is.
+pub fn not_inline<'a>(list: &'a [Attachment], inline: &[String]) -> Vec<&'a Attachment> {
+    let shown: Vec<&Attachment> = list.iter().filter(|a| inline.contains(&a.uid)).collect();
+    let in_group = |a: &Attachment| a.motion.as_ref().is_some_and(|m| shown.iter().any(|s| s.motion.as_ref().is_some_and(|n| n.group == m.group)));
+    list.iter().filter(|a| !inline.contains(&a.uid) && !in_group(a)).collect()
+}
+
 /// memos' buildAttachmentVisualItems: a Live Photo whose still and video are
 /// both here is one item, an Android motion photo is one, and the members of
 /// an incomplete group show as they are.
@@ -921,9 +930,10 @@ pub struct CardData<'a> {
 pub fn card(c: &Ctx, m: &Memo, d: &CardData, in_list: bool) -> Card {
     let tz = &c.prefs.tz;
     let empty = vec![];
-    let atts = d.attachments.get(&m.id).unwrap_or(&empty);
+    let atts = not_inline(d.attachments.get(&m.id).unwrap_or(&empty), &content::inline_attachments(&m.html, c.base));
     let visuals: Vec<&Attachment> = atts
         .iter()
+        .copied()
         .filter(|a| matches!(a.kind, Kind::Image | Kind::Video))
         .collect();
     let visuals = visual_items(c.base, &visuals);

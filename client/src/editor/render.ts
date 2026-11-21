@@ -18,6 +18,7 @@ import { headingIds } from "./headings";
 import { post } from "../lib/dom";
 import { ready, t } from "./strings";
 import { markdownStyles, tagStyles } from "../memos/markdownStyles";
+import type { Uploaded } from "./upload";
 
 /**
  * memos' class lists the read-only view repeats on every tag, link and inline
@@ -64,7 +65,7 @@ function serialize(root: HTMLElement): string {
 }
 
 /** The HTML memos' read-only view draws for `markdown`. */
-export async function renderHTML(markdown: string): Promise<string> {
+export async function renderHTML(markdown: string, attachments: readonly Uploaded[]): Promise<string> {
   await Promise.all([ready, preload(markdown)]);
   const element = document.createElement("div");
   element.style.cssText = "position:absolute;left:-10000px;top:0;width:640px;visibility:hidden";
@@ -79,7 +80,7 @@ export async function renderHTML(markdown: string): Promise<string> {
     extensions: memoExtensions({ tags: memoTagOptions(true) }),
     theme: MEMO_EDITOR_THEME,
     labels: memoEditorLabels(t),
-    resolveUrl: memoResolveUrl,
+    resolveUrl: memoResolveUrl(() => attachments),
     referrerPolicy: "no-referrer",
     sanitizeHtml: memoSanitizeHtml,
     headingIds,
@@ -103,7 +104,7 @@ export async function refreshStale(cards: HTMLElement[], version: string) {
       const res = await fetch(`${document.body.dataset.base}/f/memos/${uid}/source`);
       if (!res.ok) continue;
       const src = await res.json();
-      const html = await renderHTML(src.content);
+      const html = await renderHTML(src.content, src.attachments);
       await post(`/memos/${uid}/html`, { html, ver: version, rev: src.rev });
       const current = document.getElementById(`m-${uid}`);
       current?.removeAttribute("data-stale");

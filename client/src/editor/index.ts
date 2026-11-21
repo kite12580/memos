@@ -1,7 +1,7 @@
 // The composer and in-place editing: memos' editor, loaded when the user
 // starts writing. Saving renders the card HTML here, so the server only stores it.
 
-import { Editor, fileHandler, matchToken, scanTags, suggestion } from "@usememos/editor";
+import { Editor, fileHandler, matchToken, type Position, scanTags, suggestion } from "@usememos/editor";
 import { emoji } from "@usememos/editor/emoji";
 import { $, $$, fromHTML, post, request } from "../lib/dom";
 import { icon } from "../lib/icon";
@@ -13,10 +13,12 @@ import { refreshChrome } from "../lib/actions";
 import { layoutGrid } from "../lib/list";
 import { MEMO_EDITOR_THEME, MEMO_FOCUS_EDITOR_THEME, memoEditorLabels, memoExtensions, memoResolveUrl, memoSanitizeHtml, memoTagOptions } from "../memos/memo-markdown";
 import { MEMO_MARKDOWN } from "../memos/memo-ast";
+import { extractManagedAttachmentUIDs } from "../memos/managed-attachment";
 import { renderHTML } from "./render";
 import { ready, t } from "./strings";
-import { type Uploaded, pairLivePhotos, uploadFile } from "./upload";
+import { type LivePart, type Uploaded, pairLivePhotos, uploadFile } from "./upload";
 import { wireExtras } from "./extras";
+import { insertLocalImages, splitInline } from "./inline";
 
 declare const RENDER_VERSION: string;
 
@@ -68,6 +70,8 @@ export class Session {
   uid?: string;
   rev?: number;
   saving = false;
+  uploads = new Set<object>();
+  inline = "";
   renders = 0;
   hosted?: () => void;
 
@@ -98,13 +102,13 @@ export class Session {
         }),
         emoji({ label: t("editor.blocks.emoji") }),
         fileHandler({
-          onPaste: ({ files }) => void this.addFiles(files),
-          onDrop: ({ files }) => void this.addFiles(files),
+          onPaste: ({ files }) => this.handleFiles(files),
+          onDrop: ({ files, position }) => this.handleFiles(files, { position }),
         }),
       ],
       theme: MEMO_EDITOR_THEME,
       labels: memoEditorLabels(t),
-      resolveUrl: memoResolveUrl,
+      resolveUrl: memoResolveUrl(() => this.attachments),
       referrerPolicy: "no-referrer",
       sanitizeHtml: memoSanitizeHtml,
       attributes: { autocorrect: "on", autocapitalize: "on", spellcheck: "true" },
@@ -115,6 +119,7 @@ export class Session {
     });
     element.classList.add("memo-editor-root");
     this.el.dataset.ready = "1";
+    this.inline = [...extractManagedAttachmentUIDs(markdown)].join(",");
     wireExtras(this);
     void this.renderExtras();
     this.changed();
@@ -127,7 +132,7 @@ export class Session {
   changed() {
     const save = $<HTMLButtonElement>("[data-action=save]", this.el);
     if (save) {
-      const blocked = this.empty || this.saving;
+      const blocked = this.empty || this.saving || this.uploads.size > 0;
       save.toggleAttribute("data-disabled", blocked);
       save.setAttribute("aria-disabled", String(blocked));
       const reason = save.nextElementSibling;
@@ -138,12 +143,26 @@ export class Session {
       if (this.empty) delete save.dataset.tipShortcut;
       else save.dataset.tipShortcut = `${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl"} Enter`;
     }
+    const markdown = this.editor.getMarkdown();
+    const inline = [...extractManagedAttachmentUIDs(markdown)].join(",");
+    if (inline !== this.inline) {
+      this.inline = inline;
+      void this.renderExtras();
+    }
     const key = draftKey(this.el);
-    if (key) localStorage.setItem(key, this.editor.getMarkdown());
+    if (key) localStorage.setItem(key, markdown);
   }
 
-  async addFiles(files: File[]) {
+  /** memos' handleFiles: with `inline`, images go into the text there; everything else is attached. */
+  handleFiles(files: File[], inline?: { position?: Position | null }) {
+    if (this.saving) return;
     const live = pairLivePhotos(files);
+    const split = inline ? splitInline(files, live) : { inline: [], representatives: [], attachments: files };
+    void this.addFiles(split.attachments, live);
+    if (inline) insertLocalImages(this, split.inline, split.representatives, inline.position);
+  }
+
+  async addFiles(files: File[], live: Map<File, LivePart> = pairLivePhotos(files)) {
     for (const file of files) {
       try {
         this.attachments.push(await uploadFile(file, undefined, live.get(file)));
@@ -158,7 +177,7 @@ export class Session {
   async renderExtras() {
     const id = ++this.renders;
     const ids = (list: { uid: string }[]) => list.map((x) => x.uid).join(",");
-    const query = new URLSearchParams({ memo: this.uid ?? "", a: ids(this.attachments), r: ids(this.relations) });
+    const query = new URLSearchParams({ memo: this.uid ?? "", a: ids(this.attachments), r: ids(this.relations), i: this.inline });
     const res = await request(`/f/extras?${query}`).catch(toastError);
     if (!res) return;
     const html = await res.text();
@@ -167,15 +186,8 @@ export class Session {
     formatTimes(this.extras);
   }
 
-  insertImages(list: Uploaded[]) {
-    const { editor } = this;
-    if (list.length) editor.commands.insertMarkdown(list.map((a) => `![${imageAlt(a.filename)}](${a.url})`).join("\n\n"), { at: editor.getSelection().focus, block: true });
-    editor.commands.focus();
-    editor.commands.scrollIntoView();
-  }
-
   async save() {
-    if (this.saving || this.empty) return;
+    if (this.saving || this.empty || this.uploads.size) return;
     this.saving = true;
     this.changed();
     const button = $<HTMLButtonElement>("[data-action=save]", this.el);
@@ -187,7 +199,7 @@ export class Session {
     }, 300);
     try {
       const content = this.editor.getMarkdown();
-      const html = await renderHTML(content);
+      const html = await renderHTML(content, this.attachments);
       const body = {
         content,
         html,
@@ -481,12 +493,6 @@ export async function editCard(card: HTMLElement) {
 const menuItem = (action: string, iconName: string, label: string, extra = "") =>
   `<div role="menuitem" tabindex="-1" class="mu-menu-item mu-s-sm mu-caption${extra}" data-insert="${action}"><span class="mu-option-icon" aria-hidden="true">${icon(iconName, "")}</span><span class="mu-menu-label">${label}</span></div>`;
 
-function imageAlt(filename: string) {
-  const name = filename.replace(/[\r\n]+/g, " ").trim();
-  const dot = name.lastIndexOf(".");
-  return (dot > 0 ? name.slice(0, dot) : name || "image").replace(/[\\[\]]/g, "\\$&");
-}
-
 function pickFiles(accept: string): Promise<File[]> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
@@ -522,17 +528,8 @@ export async function openInsertMenu(trigger: HTMLElement) {
     switch (item.dataset.insert) {
       case "attachment":
         return session.addFiles(await pickFiles(""));
-      case "image": {
-        const done: Uploaded[] = [];
-        for (const file of await pickFiles("image/*")) {
-          try {
-            done.push(await uploadFile(file));
-          } catch (err) {
-            toastError(err);
-          }
-        }
-        return session.insertImages(done);
-      }
+      case "image":
+        return session.handleFiles(await pickFiles("image/*"), {});
       case "draw":
         return import("./draw").then((m) => m.openDrawing(session, t));
       case "record":

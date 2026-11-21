@@ -228,6 +228,7 @@ impl App {
             (_, true, ["profile"]) => actions::profile(self, &req).await,
             (true, _, ["avatar"]) => files::avatar(self),
             (true, _, ["thumb", uid]) => files::serve(self, &req, uid, true).await,
+            (true, _, ["file", "attachments", uid] | ["file", "attachments", uid, _]) => files::serve(self, &req, uid, false).await,
             (true, _, ["file", uid, _name]) => files::serve(self, &req, uid, false).await,
             (true, _, ["assets", name]) => self
                 .assets

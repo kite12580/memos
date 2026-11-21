@@ -182,6 +182,34 @@ pub fn image_sources(html: &str) -> Vec<String> {
     start_tags(html, "img").filter_map(|t| attr(t, "src")).map(unescape).collect()
 }
 
+/// The attachment a `/file/attachments/{uid}` image source (memos' managed
+/// image URL, with or without its filename, under `base` or not) names.
+pub fn managed_uid<'a>(src: &'a str, base: &str) -> Option<&'a str> {
+    let path = src.strip_prefix(base).filter(|p| p.starts_with('/')).unwrap_or(src);
+    let rest = path.strip_prefix("/file/attachments/")?;
+    let (uid, name) = rest.split_once('/').map_or((rest, None), |(u, n)| (u, Some(n)));
+    let valid = (1..=36).contains(&uid.len())
+        && uid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        && !uid.starts_with('-')
+        && !uid.ends_with('-')
+        && name.is_none_or(|n| !n.is_empty() && !n.contains('/'))
+        && !path.contains(['?', '#']);
+    valid.then_some(uid)
+}
+
+/// The attachments the memo shows inline, in order, each once.
+pub fn inline_attachments(html: &str, base: &str) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for src in image_sources(html) {
+        if let Some(uid) = managed_uid(&src, base)
+            && !out.iter().any(|u| u == uid)
+        {
+            out.push(uid.to_string());
+        }
+    }
+    out
+}
+
 /// Plain text of the start of the memo, for link pickers and references.
 pub fn snippet(markdown: &str) -> String {
     const MAX: usize = 160;
@@ -589,6 +617,15 @@ mod tests {
         assert_eq!(d.tags, vec!["work/proj", "a"]);
         assert!(d.has_task && d.has_todo && d.has_link);
         assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn finds_inline_attachments() {
+        let editor = r#"<p><img src="/notes/file/attachments/abc1/IMG%201.JPG" class="mbe-image"><img src="/notes/file/attachments/abc1"></p><p><img src="/notes/file/abc2/x.png"><img src="https://x.com/file/attachments/abc3"><img src="/notes/file/attachments/abc4?thumbnail=true"></p>"#;
+        assert_eq!(inline_attachments(editor, "/notes"), ["abc1"]);
+        assert_eq!(inline_attachments(&fallback_html("![a](/file/attachments/abc5)\n\n`![b](/file/attachments/abc6)`"), "/notes"), ["abc5"]);
+        assert_eq!(managed_uid("/file/attachments/-bad", ""), None);
+        assert_eq!(managed_uid("/file/attachments/ok/a/b", ""), None);
     }
 
     #[test]

@@ -2,6 +2,7 @@ import { $$ } from "../lib/dom";
 import { icon } from "../lib/icon";
 import { closeAll, openPopup } from "../lib/popup";
 import type { Session } from "./index";
+import { insertRemoteImages } from "./inline";
 import { t } from "./strings";
 
 const DRAG_THRESHOLD_PX = 4;
@@ -283,10 +284,9 @@ export function wireExtras(session: Session) {
         session.relations = session.relations.filter((r) => r.uid !== uid);
         break;
       case "insert":
-        if (!a) return;
-        session.insertImages([a]);
-        session.attachments = session.attachments.filter((x) => !group.includes(x));
-        break;
+        insertRemoteImages(session, group);
+        session.changed();
+        return;
       case "markup":
         if (a) void import("./draw").then((m) => m.openDrawing(session, t, a));
         return;

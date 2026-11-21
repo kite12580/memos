@@ -153,9 +153,9 @@ fn link(l: &MemoLink, now: i64, tz: &TimeZone) -> Link {
     }
 }
 
-fn split(c: &Ctx, list: &[Attachment], memo_id: Option<i64>) -> (Vec<Tile>, Vec<Row>) {
+fn split(c: &Ctx, list: &[&Attachment], memo_id: Option<i64>) -> (Vec<Tile>, Vec<Row>) {
     let is_new = |a: &Attachment| a.memo_id.is_none() || a.memo_id != memo_id;
-    let visuals: Vec<&Attachment> = list.iter().filter(|a| matches!(a.kind, Kind::Image | Kind::Video)).collect();
+    let visuals: Vec<&Attachment> = list.iter().copied().filter(|a| matches!(a.kind, Kind::Image | Kind::Video)).collect();
     let items = v::visual_items(c.base, &visuals);
     let count = items.len();
     let mut tiles = vec![];
@@ -222,7 +222,7 @@ fn uids(req: &Request, key: &str) -> Vec<String> {
 pub async fn extras(app: &Arc<App>, req: &Request) -> Response {
     let c = app.ctx(req);
     let memo = req.query("memo").filter(|s| !s.is_empty());
-    let (a, r) = (uids(req, "a"), uids(req, "r"));
+    let (a, r, inline) = (uids(req, "a"), uids(req, "r"), uids(req, "i"));
     let data = app
         .db
         .with(move |conn| {
@@ -241,7 +241,7 @@ pub async fn extras(app: &Arc<App>, req: &Request) -> Response {
         Ok(d) => d,
         Err(e) => return e.into(),
     };
-    let (tiles, rows) = split(&c, &list, memo_id);
+    let (tiles, rows) = split(&c, &v::not_inline(&list, &inline), memo_id);
     let tz = c.prefs.tz.clone();
     let refs = refs.iter().map(|l| link(l, c.now, &tz)).collect();
     let backlinks = back.iter().map(|l| link(l, c.now, &tz)).collect();

@@ -22,6 +22,7 @@ import {
 import { highlightLoadedCode, loadHighlighter } from "./code-highlight";
 import { cn } from "./cn";
 import { headingClasses, markdownStyles, tagStyles } from "./markdownStyles";
+import { resolveManagedAttachmentImageSource } from "./managed-attachment";
 import { MEMO_MARKDOWN, MEMO_SYNTAX } from "./memo-ast";
 import { isAllowedLinkUrl } from "./url-policy";
 
@@ -96,10 +97,12 @@ export const memoExtensions = (options: { tags?: Pick<TagsOptions, "class" | "at
 /** Images load from relative URLs and https only, as memos' sanitizer allowed; anything else is dropped. */
 const isAllowedImageSource = (src: string): boolean => !/^[a-z][a-z0-9+.-]*:/i.test(src) || /^https:/i.test(src);
 
-export const memoResolveUrl: ResolveUrl = (url, kind) => {
-  if (kind === "image") return isAllowedImageSource(url) ? url : null;
-  return isAllowedLinkUrl(url.trim()) ? url.trim() : null;
-};
+export const memoResolveUrl =
+  (attachments: () => readonly { uid: string; filename: string }[] = () => []): ResolveUrl =>
+  (url, kind) => {
+    if (kind === "image") return isAllowedImageSource(url) ? resolveManagedAttachmentImageSource(url, attachments()) : null;
+    return isAllowedLinkUrl(url.trim()) ? url.trim() : null;
+  };
 
 /** The editor's look on @usememos/ui's tokens (memos' MEMO_EDITOR_THEME). */
 export const MEMO_EDITOR_THEME: Theme = (() => {
