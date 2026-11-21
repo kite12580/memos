@@ -97,7 +97,7 @@ test.describe("on a wide screen", () => {
   test("the day panel lists by time, takes focus and resizes like memos'", async ({ page, request }) => {
     const at = (h: number) => Math.floor(Date.parse(`${today()}T0${h}:05:00Z`) / 1000);
     const pinned = await memo(request, "Later and pinned", { createdTs: at(9), pinned: true });
-    await memo(request, "Earlier", { createdTs: at(8) });
+    const earlier = await memo(request, "Earlier", { createdTs: at(8) });
     await page.goto("/calendar");
     await page.locator(`[data-calendar-date="${today()}"]`).click();
     const panel = page.locator(`[data-day-panel="${today()}"]`);
@@ -118,6 +118,6 @@ test.describe("on a wide screen", () => {
     await expect(again).toHaveAttribute("aria-valuenow", "400");
     await page.keyboard.press("Escape");
     await expect(page.locator(`[data-calendar-date="${today()}"]`)).toBeFocused();
-    await request.patch(`/api/memos/${pinned}`, { headers: auth, data: { pinned: false } });
+    for (const uid of [pinned, earlier]) await request.delete(`/api/memos/${uid}`, { headers: auth });
   });
 });
