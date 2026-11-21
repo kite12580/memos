@@ -89,6 +89,7 @@ pub async fn handle(app: &Arc<App>, req: Request) -> Response {
                 return Response::error(400, "content is required");
             };
             let html = content::fallback_html(&content);
+            let inline = content::inline_attachments(&html, &base);
             let new = NewMemo {
                 derived: content::derive(&html),
                 snippet: content::snippet(&content),
@@ -107,6 +108,9 @@ pub async fn handle(app: &Arc<App>, req: Request) -> Response {
             let res = app
                 .db
                 .tx(move |c| {
+                    if let Some(uid) = atts::unbound_inline(c, None, &inline, Some(&attachments))? {
+                        return Ok(Err(uid));
+                    }
                     let m = memos::create(c, new)?;
                     atts::attach(c, m.id, &attachments)?;
                     if pinned {
@@ -114,14 +118,15 @@ pub async fn handle(app: &Arc<App>, req: Request) -> Response {
                     }
                     let m = memos::get(c, &m.uid)?.expect("memo just created");
                     let a = atts::for_memos(c, &[m.id])?.remove(&m.id).unwrap_or_default();
-                    Ok((m, a))
+                    Ok(Ok((m, a)))
                 })
                 .await;
             match res {
-                Ok((m, a)) => {
+                Ok(Ok((m, a))) => {
                     app.changed();
                     Response::json(201, &memo_json(&base, &m, &a))
                 }
+                Ok(Err(uid)) => crate::actions::unbound(&uid),
                 Err(e) => e.into(),
             }
         }
@@ -151,11 +156,16 @@ pub async fn handle(app: &Arc<App>, req: Request) -> Response {
                 "PATCH" => {
                     let b = req.json().unwrap_or(Value::Null);
                     let now = (app.now)();
+                    let tx_base = base.clone();
                     let res = app
                         .db
                         .tx(move |c| {
                             if let Some(content) = b["content"].as_str() {
                                 let html = content::fallback_html(content);
+                                let memo_id = memos::get(c, &uid)?.map(|m| m.id);
+                                if let Some(unbound) = atts::unbound_inline(c, memo_id, &content::inline_attachments(&html, &tx_base), None)? {
+                                    return Ok(Err(unbound));
+                                }
                                 let edit = Edit {
                                     derived: content::derive(&html),
                                     snippet: content::snippet(content),
@@ -167,7 +177,7 @@ pub async fn handle(app: &Arc<App>, req: Request) -> Response {
                                     now,
                                 };
                                 if let Outcome::NotFound | Outcome::Conflict = memos::update(c, &uid, b["rev"].as_i64(), edit)? {
-                                    return Ok(None);
+                                    return Ok(Ok(None));
                                 }
                             }
                             for (key, flag) in [("pinned", Flag::Pinned), ("archived", Flag::Archived)] {
@@ -176,18 +186,19 @@ pub async fn handle(app: &Arc<App>, req: Request) -> Response {
                                 }
                             }
                             let Some(m) = memos::get(c, &uid)? else {
-                                return Ok(None);
+                                return Ok(Ok(None));
                             };
                             let a = atts::for_memos(c, &[m.id])?.remove(&m.id).unwrap_or_default();
-                            Ok(Some((m, a)))
+                            Ok(Ok(Some((m, a))))
                         })
                         .await;
                     match res {
-                        Ok(Some((m, a))) => {
+                        Ok(Ok(Some((m, a)))) => {
                             app.changed();
                             Response::json(200, &memo_json(&base, &m, &a))
                         }
-                        Ok(None) => Response::error(409, "memo not found or changed"),
+                        Ok(Ok(None)) => Response::error(409, "memo not found or changed"),
+                        Ok(Err(unbound)) => crate::actions::unbound(&unbound),
                         Err(e) => e.into(),
                     }
                 }

@@ -1,4 +1,4 @@
-import { footnotes, type MarkdownOptions, type MarkdownSyntax, tags } from "@usememos/editor";
+import { footnotes, type MarkdownOptions, type MarkdownSyntax, parseAst, type Root, tags } from "@usememos/editor";
 
 /**
  * The memo Markdown dialect, shared by the composer and the read-only memo view
@@ -12,3 +12,6 @@ export const MEMO_MARKDOWN: MarkdownOptions = { breaks: true, setext: false };
 export const MEMO_SYNTAX: readonly MarkdownSyntax[] = [footnotes(), tags()].flatMap((extension) =>
   extension.markdown ? [extension.markdown] : [],
 );
+
+/** A memo's syntax tree, as the composer and the memo view read it. */
+export const parseMemoAst = (markdown: string): Root => parseAst(markdown, { ...MEMO_MARKDOWN, syntax: MEMO_SYNTAX });

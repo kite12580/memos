@@ -121,13 +121,12 @@ pub fn set_thumb(c: &Connection, uid: &str) -> DbResult<bool> {
         > 0)
 }
 
-/// Gives the memo exactly these attachments, in this order, with a motion
-/// photo's members kept together. A motion photo the memo has is dropped
-/// whole unless every member is kept (memos' normalizeMemoAttachments).
-/// Attachments dropped from it stay in the library as unused.
-pub fn attach(tx: &Transaction, memo_id: i64, uids: &[String]) -> DbResult<()> {
+/// The attachments `attach` would give the memo, in order: these, with a
+/// motion photo's members kept together. A motion photo the memo has is
+/// dropped whole unless every member is kept (memos' normalizeMemoAttachments).
+pub fn normalized(c: &Connection, memo_id: Option<i64>, uids: &[String]) -> DbResult<Vec<String>> {
     let mut current: HashMap<String, Vec<String>> = HashMap::new();
-    for row in tx
+    for row in c
         .prepare_cached("SELECT motion ->> 'group', uid FROM attachment WHERE memo_id = ? AND motion IS NOT NULL")?
         .query_map([memo_id], |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, String>(1)?)))?
     {
@@ -135,25 +134,32 @@ pub fn attach(tx: &Transaction, memo_id: i64, uids: &[String]) -> DbResult<()> {
             current.entry(group).or_default().push(uid);
         }
     }
-    let requested = by_uids(tx, uids)?;
-    let mut order: Vec<&str> = vec![];
+    let requested = by_uids(c, uids)?;
+    let mut order: Vec<String> = vec![];
     for a in &requested {
-        if order.contains(&a.uid.as_str()) {
+        if order.contains(&a.uid) {
             continue;
         }
         let Some(group) = a.motion.as_ref().map(|m| &m.group) else {
-            order.push(&a.uid);
+            order.push(a.uid.clone());
             continue;
         };
         if current.get(group).is_some_and(|members| members.len() > 1 && !members.iter().all(|m| uids.contains(m))) {
             continue;
         }
         for b in &requested {
-            if b.motion.as_ref().is_some_and(|m| &m.group == group) && !order.contains(&b.uid.as_str()) {
-                order.push(&b.uid);
+            if b.motion.as_ref().is_some_and(|m| &m.group == group) && !order.contains(&b.uid) {
+                order.push(b.uid.clone());
             }
         }
     }
+    Ok(order)
+}
+
+/// Gives the memo exactly the `normalized` attachments. Attachments dropped
+/// from it stay in the library as unused.
+pub fn attach(tx: &Transaction, memo_id: i64, uids: &[String]) -> DbResult<()> {
+    let order = normalized(tx, Some(memo_id), uids)?;
     tx.prepare_cached("UPDATE attachment SET memo_id = NULL WHERE memo_id = ?")?
         .execute([memo_id])?;
     let mut st = tx.prepare_cached("UPDATE attachment SET memo_id = ?, position = ? WHERE uid = ?")?;
@@ -161,6 +167,26 @@ pub fn attach(tx: &Transaction, memo_id: i64, uids: &[String]) -> DbResult<()> {
         st.execute(params![memo_id, i as i64, uid])?;
     }
     Ok(())
+}
+
+/// memos' resolveMemoAttachmentReferences: the first attachment the text
+/// shows inline that is not among the memo's image attachments, which are
+/// `uids` once normalized, or the ones it has when `uids` is None.
+pub fn unbound_inline(c: &Connection, memo_id: Option<i64>, inline: &[String], uids: Option<&[String]>) -> DbResult<Option<String>> {
+    if inline.is_empty() {
+        return Ok(None);
+    }
+    let attached = match (uids, memo_id) {
+        (Some(uids), _) => normalized(c, memo_id, uids)?,
+        (None, Some(id)) => for_memos(c, &[id])?.remove(&id).unwrap_or_default().into_iter().map(|a| a.uid).collect(),
+        (None, None) => vec![],
+    };
+    for uid in inline {
+        if !attached.contains(uid) || !get(c, uid)?.is_some_and(|a| a.kind == Kind::Image) {
+            return Ok(Some(uid.clone()));
+        }
+    }
+    Ok(None)
 }
 
 pub fn motion_partners(c: &Connection, a: &Attachment) -> DbResult<Vec<Attachment>> {

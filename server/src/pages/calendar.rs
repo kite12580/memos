@@ -202,7 +202,11 @@ fn summarize(c: &Ctx, memos: &[DayMemo]) -> BTreeMap<String, Summary> {
         }
         if s.images.len() < MAX_IMAGES {
             let attached = m.files.iter().filter(|a| a.kind == Kind::Image).map(|a| v::thumb_url(c.base, a));
-            if let Some(src) = content::image_sources(&m.html).into_iter().chain(attached).find(|src| !s.images.contains(src)) {
+            let written = content::image_sources(&m.html).into_iter().filter_map(|src| match content::managed_uid(&src, c.base) {
+                Some(uid) => m.files.iter().find(|a| a.uid == uid && a.kind == Kind::Image).map(|a| v::thumb_url(c.base, a)),
+                None => Some(src),
+            });
+            if let Some(src) = written.chain(attached).find(|src| !s.images.contains(src)) {
                 s.images.push(src);
             }
         }

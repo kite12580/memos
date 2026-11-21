@@ -43,6 +43,7 @@ pub async fn create(app: &Arc<App>, req: &Request) -> Response {
     }
     let (html, ver) = rendered(&content, b["html"].as_str(), b["ver"].as_str());
     let derived = content::derive(&html);
+    let inline = content::inline_attachments(&html, &app.cfg.base);
     let snippet = content::snippet(&content);
     let relations = strings(&b["relations"]);
     let parent = b["parent"].as_str().map(str::to_string);
@@ -50,10 +51,13 @@ pub async fn create(app: &Arc<App>, req: &Request) -> Response {
     let res = app
         .db
         .tx(move |c| {
+            if let Some(uid) = atts::unbound_inline(c, None, &inline, Some(&attachments))? {
+                return Ok(Err(uid));
+            }
             let parent_id = match parent {
                 Some(uid) => match memos::get(c, &uid)? {
                     Some(p) => Some(p.id),
-                    None => return Ok(None),
+                    None => return Ok(Ok(None)),
                 },
                 None => None,
             };
@@ -73,15 +77,16 @@ pub async fn create(app: &Arc<App>, req: &Request) -> Response {
             if !relations.is_empty() {
                 memos::set_relations(c, m.id, &relations)?;
             }
-            Ok(Some(m.uid))
+            Ok(Ok(Some(m.uid)))
         })
         .await;
     match res {
-        Ok(Some(uid)) => {
+        Ok(Ok(Some(uid))) => {
             app.changed();
             card_response(app, req, &uid).await.with("x-memo", &uid)
         }
-        Ok(None) => Response::error(404, "parent memo not found"),
+        Ok(Ok(None)) => Response::error(404, "parent memo not found"),
+        Ok(Err(uid)) => unbound(&uid),
         Err(e) => e.into(),
     }
 }
@@ -92,6 +97,7 @@ pub async fn update(app: &Arc<App>, req: &Request, uid: &str) -> Response {
         return Response::error(400, "content is required");
     };
     let (html, ver) = rendered(&content, b["html"].as_str(), b["ver"].as_str());
+    let inline = content::inline_attachments(&html, &app.cfg.base);
     let edit = Edit {
         derived: content::derive(&html),
         snippet: content::snippet(&content),
@@ -109,6 +115,10 @@ pub async fn update(app: &Arc<App>, req: &Request, uid: &str) -> Response {
     let res = app
         .db
         .tx(move |c| {
+            let memo_id = memos::get(c, &uid_owned)?.map(|m| m.id);
+            if let Some(uid) = atts::unbound_inline(c, memo_id, &inline, attachments.as_deref())? {
+                return Ok(Err(uid));
+            }
             let out = memos::update(c, &uid_owned, rev, edit)?;
             if let Outcome::Done(m) = &out {
                 if let Some(a) = attachments {
@@ -118,10 +128,18 @@ pub async fn update(app: &Arc<App>, req: &Request, uid: &str) -> Response {
                     memos::set_relations(c, m.id, &r)?;
                 }
             }
-            Ok(out)
+            Ok(Ok(out))
         })
         .await;
-    outcome(app, req, uid, res.map(|o| o.map(|_| ()))).await
+    match res {
+        Ok(Err(unbound_uid)) => unbound(&unbound_uid),
+        Ok(Ok(o)) => outcome(app, req, uid, Ok(o.map(|_| ()))).await,
+        Err(e) => outcome(app, req, uid, Err(e)).await,
+    }
+}
+
+pub fn unbound(uid: &str) -> Response {
+    Response::error(400, &format!("managed image attachment {uid} must be bound to the memo"))
 }
 
 async fn outcome(app: &Arc<App>, req: &Request, uid: &str, res: Result<Outcome<()>, crate::db::DbError>) -> Response {
