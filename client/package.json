@@ -9,18 +9,18 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@pierre/highlights": "0.3.0",
+    "@pierre/highlights": "0.5.2",
     "@usememos/canvas": "26.11.3",
-    "@usememos/editor": "26.11.5",
-    "@usememos/ui": "26.11.25",
-    "dompurify": "3.4.17"
+    "@usememos/editor": "26.11.6",
+    "@usememos/ui": "26.11.26",
+    "dompurify": "3.5.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
-    "@tailwindcss/cli": "4.2.4",
+    "@playwright/test": "1.65.1",
+    "@tailwindcss/cli": "4.3.5",
     "esbuild": "0.28.2",
-    "lucide-static": "1.34.0",
-    "tailwindcss": "4.2.4",
-    "typescript": "5.9.3"
+    "lucide-static": "1.78.0",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2"
   }
 }

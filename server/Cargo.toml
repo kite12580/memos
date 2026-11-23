@@ -18,7 +18,7 @@ jiff = { version = "1", default-features = false, features = ["std", "tzdb-bundl
 percent-encoding = "2.3.2"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 regex-lite = "0.1.9"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 serde_json = "1.0.154"
 tar = "0.4.46"
 tokio = { version = "1", features = ["rt", "macros", "net", "signal", "sync", "time", "fs", "io-util"] }

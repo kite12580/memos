@@ -105,11 +105,11 @@ CREATE INDEX attachment_motion_group ON attachment(motion ->> 'group') WHERE mot
 "#];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
-    let version: usize = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    for (i, sql) in MIGRATIONS.iter().enumerate().skip(version) {
+    let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    for (next, sql) in (1u32..).zip(MIGRATIONS).skip(version as usize) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
-        tx.pragma_update(None, "user_version", i + 1)?;
+        tx.pragma_update(None, "user_version", next)?;
         tx.commit()?;
     }
     Ok(())

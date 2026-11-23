@@ -2,7 +2,7 @@
 
 FROM --platform=$BUILDPLATFORM tonistiigi/xx AS xx
 
-FROM --platform=$BUILDPLATFORM node:24-alpine AS client
+FROM --platform=$BUILDPLATFORM node:26-alpine AS client
 WORKDIR /build/client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
